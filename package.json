@@ -1,0 +1,26 @@
+{
+  "name": "member-platform-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "demo:dev": "concurrently -n API,ADMIN,MINIAPP -c green,cyan,magenta \"pnpm dev:api\" \"pnpm dev:admin\" \"pnpm dev:miniapp\"",
+    "dev:api": "pnpm --filter @member-platform/api dev",
+    "dev:admin": "pnpm --filter @member-platform/admin-web dev",
+    "dev:miniapp": "pnpm --filter @member-platform/member-miniapp dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter @member-platform/api test",
+    "test:e2e": "pnpm --filter @member-platform/api test:e2e",
+    "seed": "pnpm --filter @member-platform/api seed"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.31.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}

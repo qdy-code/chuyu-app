@@ -1,0 +1,22 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "会员中心"
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationBarTitleText": "个人信息"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "会员小程序",
+    "navigationBarBackgroundColor": "#F8FAFC",
+    "backgroundColor": "#F8FAFC"
+  }
+}

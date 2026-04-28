@@ -1,0 +1,13 @@
+{
+  "name": "会员小程序演示",
+  "appid": "__UNI__DEMO__",
+  "description": "会员后台系统 v1 小程序端演示",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "mp-weixin": {
+    "appid": "touristappid",
+    "setting": {
+      "urlCheck": false
+    }
+  }
+}

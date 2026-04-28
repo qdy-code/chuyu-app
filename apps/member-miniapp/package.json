@@ -1,0 +1,22 @@
+{
+  "name": "@member-platform/member-miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uni -p mp-weixin",
+    "build": "uni build -p mp-weixin",
+    "lint": "echo miniapp-lint-skip"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5000720260327001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5000720260327001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5000720260327001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5000720260327001",
+    "@member-platform/shared": "workspace:*",
+    "vue": "3.4.21"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "5.2.8"
+  }
+}

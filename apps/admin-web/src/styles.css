@@ -1,0 +1,266 @@
+:root {
+  --bg: #f6f8fc;
+  --card: #ffffff;
+  --text: #101828;
+  --muted: #667085;
+  --brand: #0f766e;
+  --danger: #b42318;
+  --border: #e4e7ec;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top right, #d1fae5 0%, var(--bg) 30%);
+}
+
+.layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: #0f172a;
+  color: #fff;
+  padding: 20px;
+}
+
+.sidebar h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.nav-item.active {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.main {
+  padding: 20px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+h2 {
+  margin: 0 0 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  text-align: left;
+}
+
+button.primary {
+  background: var(--brand);
+  color: #fff;
+  border: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #fff;
+  border: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 0;
+}
+
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+  min-width: 0;
+}
+
+small {
+  color: var(--muted);
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 20;
+}
+
+.modal-card {
+  width: min(760px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+
+.field-label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ghost-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.submit-wrap {
+  position: relative;
+}
+
+.submit-bubble {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 220px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+}
+
+.thumb-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.thumb-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.thumb-item img {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+
+.thumb-list.in-table {
+  margin-top: 0;
+}
+
+.thumb-list.in-table img {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.metadata-cell {
+  max-width: 360px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.metadata-cell > div {
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.metadata-cell > div:last-child {
+  margin-bottom: 0;
+}
+
+.metadata-cell pre {
+  max-width: 360px;
+  max-height: 140px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+}
+
+button.mini {
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
