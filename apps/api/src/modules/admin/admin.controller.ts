@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   NotFoundException,
@@ -16,15 +17,20 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'node:path';
 import { v4 as uuid } from 'uuid';
-import { ConsumptionOrder, MemberLevel, MemberProfile, RechargeOrder } from '@member-platform/shared';
+import { Appointment, ConsumptionOrder, MemberLevel, MemberProfile, ProductType, RechargeOrder } from '@member-platform/shared';
 import { getUploadDir } from '../../config/upload-path';
 import { DataStoreService } from '../../store/data-store.service';
 import {
+  CreateAdminAppointmentDto,
   CreateConsumptionOrderDto,
+  CreateMemberDto,
   CreateMemberLevelDto,
+  CreateProductTypeDto,
   RejectRechargeAdminDto,
+  UpdateAppointmentDto,
   UpdateMemberDto,
   UpdateMemberLevelDto,
+  UpdateProductTypeDto,
 } from './dto';
 
 @Controller('admin')
@@ -32,13 +38,22 @@ export class AdminController {
   constructor(private readonly store: DataStoreService) {}
 
   @Get('members')
-  listMembers(): MemberProfile[] {
+  listMembers(): Promise<MemberProfile[]> {
     return this.store.listMembers();
   }
 
+  @Post('members')
+  async createMember(@Body() payload: CreateMemberDto): Promise<MemberProfile> {
+    const result = await this.store.createMember(payload);
+    if (!result.member) {
+      throw new BadRequestException(result.reason || 'failed to create member');
+    }
+    return result.member;
+  }
+
   @Get('members/:id')
-  detailMember(@Param('id') id: string): MemberProfile {
-    const member = this.store.getMemberById(id);
+  async detailMember(@Param('id') id: string): Promise<MemberProfile> {
+    const member = await this.store.getMemberById(id);
     if (!member) {
       throw new NotFoundException('member not found');
     }
@@ -46,8 +61,8 @@ export class AdminController {
   }
 
   @Patch('members/:id')
-  updateMember(@Param('id') id: string, @Body() payload: UpdateMemberDto): MemberProfile {
-    const result = this.store.updateMember(id, payload);
+  async updateMember(@Param('id') id: string, @Body() payload: UpdateMemberDto): Promise<MemberProfile> {
+    const result = await this.store.updateMember(id, payload);
     if (!result.member) {
       throw new BadRequestException(result.reason || 'failed to update member');
     }
@@ -55,8 +70,8 @@ export class AdminController {
   }
 
   @Get('members/:id/consumptions')
-  listMemberConsumption(@Param('id') id: string): ConsumptionOrder[] {
-    const member = this.store.getMemberById(id);
+  async listMemberConsumption(@Param('id') id: string): Promise<ConsumptionOrder[]> {
+    const member = await this.store.getMemberById(id);
     if (!member) {
       throw new NotFoundException('member not found');
     }
@@ -64,36 +79,109 @@ export class AdminController {
   }
 
   @Post('member-levels')
-  createLevel(@Body() payload: CreateMemberLevelDto): MemberLevel {
+  createLevel(@Body() payload: CreateMemberLevelDto): Promise<MemberLevel> {
     return this.store.createLevel(payload);
   }
 
   @Patch('member-levels/:id')
-  updateLevel(@Param('id') id: string, @Body() payload: UpdateMemberLevelDto): MemberLevel {
-    const level = this.store.updateLevel(id, payload);
+  async updateLevel(@Param('id') id: string, @Body() payload: UpdateMemberLevelDto): Promise<MemberLevel> {
+    const level = await this.store.updateLevel(id, payload);
     if (!level) {
       throw new NotFoundException('level not found');
     }
     return level;
   }
 
+  @Delete('member-levels/:id')
+  async deleteLevel(@Param('id') id: string): Promise<{ success: true }> {
+    const result = await this.store.deleteLevel(id);
+    if (!result.success) {
+      if (result.reason === 'level not found') {
+        throw new NotFoundException(result.reason);
+      }
+      throw new BadRequestException(result.reason || 'failed to delete level');
+    }
+    return { success: true };
+  }
+
   @Get('member-levels')
-  listLevels(): MemberLevel[] {
+  listLevels(): Promise<MemberLevel[]> {
     return this.store.listLevels();
   }
 
+  @Get('product-types')
+  listProductTypes(): Promise<ProductType[]> {
+    return this.store.listProductTypes();
+  }
+
+  @Post('product-types')
+  async createProductType(@Body() payload: CreateProductTypeDto): Promise<ProductType> {
+    const result = await this.store.createProductType(payload);
+    if (!result.productType) {
+      throw new BadRequestException(result.reason || 'failed to create product type');
+    }
+    return result.productType;
+  }
+
+  @Patch('product-types/:id')
+  async updateProductType(@Param('id') id: string, @Body() payload: UpdateProductTypeDto): Promise<ProductType> {
+    const result = await this.store.updateProductType(id, payload);
+    if (!result.productType) {
+      throw new BadRequestException(result.reason || 'failed to update product type');
+    }
+    return result.productType;
+  }
+
+  @Delete('product-types/:id')
+  async deleteProductType(@Param('id') id: string): Promise<{ success: true }> {
+    const result = await this.store.deleteProductType(id);
+    if (!result.success) {
+      throw new BadRequestException(result.reason || 'failed to delete product type');
+    }
+    return { success: true };
+  }
+
+  @Get('appointments')
+  listAppointments(): Promise<Appointment[]> {
+    return this.store.listAppointments();
+  }
+
+  @Post('appointments')
+  async createAppointment(
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Body() payload: CreateAdminAppointmentDto,
+  ): Promise<Appointment> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const effectiveAdminId = adminId || admins[0]?.id || 'admin-unknown';
+    const result = await this.store.createAdminAppointment(effectiveAdminId, payload);
+    if (!result.appointment) {
+      throw new BadRequestException(result.reason || 'failed to create appointment');
+    }
+    return result.appointment;
+  }
+
+  @Patch('appointments/:id')
+  async updateAppointment(@Param('id') id: string, @Body() payload: UpdateAppointmentDto): Promise<Appointment> {
+    const result = await this.store.updateAppointment(id, payload);
+    if (!result.appointment) {
+      throw new BadRequestException(result.reason || 'failed to update appointment');
+    }
+    return result.appointment;
+  }
+
   @Get('recharges')
-  listRecharges(): RechargeOrder[] {
+  listRecharges(): Promise<RechargeOrder[]> {
     return this.store.listRechargeOrders();
   }
 
   @Post('recharges/:id/approve')
-  approve(
+  async approve(
     @Headers('x-admin-id') adminId: string | undefined,
     @Param('id') id: string,
-  ): RechargeOrder {
-    const effectiveAdminId = adminId || this.store.getAdmins()[0]?.id || 'admin-unknown';
-    const order = this.store.approveRecharge(id, effectiveAdminId);
+  ): Promise<RechargeOrder> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const effectiveAdminId = adminId || admins[0]?.id || 'admin-unknown';
+    const order = await this.store.approveRecharge(id, effectiveAdminId);
     if (!order) {
       throw new NotFoundException('order not found or already finalized');
     }
@@ -101,13 +189,14 @@ export class AdminController {
   }
 
   @Post('recharges/:id/reject')
-  reject(
+  async reject(
     @Headers('x-admin-id') adminId: string | undefined,
     @Param('id') id: string,
     @Body() payload: RejectRechargeAdminDto,
-  ): RechargeOrder {
-    const effectiveAdminId = adminId || this.store.getAdmins()[0]?.id || 'admin-unknown';
-    const order = this.store.rejectRecharge(id, effectiveAdminId, payload);
+  ): Promise<RechargeOrder> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const effectiveAdminId = adminId || admins[0]?.id || 'admin-unknown';
+    const order = await this.store.rejectRecharge(id, effectiveAdminId, payload);
     if (!order) {
       throw new NotFoundException('order not found or already finalized');
     }
@@ -139,12 +228,13 @@ export class AdminController {
   }
 
   @Post('orders')
-  createOrder(
+  async createOrder(
     @Headers('x-admin-id') adminId: string | undefined,
     @Body() payload: CreateConsumptionOrderDto,
-  ): ConsumptionOrder {
-    const effectiveAdminId = adminId || this.store.getAdmins()[0]?.id || 'admin-unknown';
-    const result = this.store.createConsumptionOrder(effectiveAdminId, payload);
+  ): Promise<ConsumptionOrder> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const effectiveAdminId = adminId || admins[0]?.id || 'admin-unknown';
+    const result = await this.store.createConsumptionOrder(effectiveAdminId, payload);
 
     if (!result.order) {
       throw new BadRequestException(result.reason || 'failed to create order');
@@ -154,7 +244,7 @@ export class AdminController {
   }
 
   @Get('orders')
-  listOrders(@Query('userId') userId?: string): ConsumptionOrder[] {
+  listOrders(@Query('userId') userId?: string): Promise<ConsumptionOrder[]> {
     if (userId) {
       return this.store.listConsumptionOrders(userId);
     }

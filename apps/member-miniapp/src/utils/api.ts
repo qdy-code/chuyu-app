@@ -1,11 +1,16 @@
 import type {
+  Appointment,
+  BindWechatPhoneRequest,
+  BookedAppointmentSlot,
   ConsumptionOrder,
+  CreateAppointmentRequest,
   LoginResponse,
   MemberProfile,
   RechargeApplyRequest,
   RechargeOrder,
   UpdateMyProfileRequest,
 } from '@member-platform/shared';
+import { sessionState } from '@/store/session';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000';
 
@@ -16,6 +21,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       method: (init?.method as 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE') || 'GET',
       header: {
         'Content-Type': 'application/json',
+        ...(sessionState.token ? { Authorization: `Bearer ${sessionState.token}` } : {}),
         ...(init?.headers as Record<string, string>),
       },
       data: init?.body ? JSON.parse(init.body as string) : undefined,
@@ -37,16 +43,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 }
 
-export async function wechatLogin(code: string): Promise<LoginResponse> {
-  return request<LoginResponse>('/auth/wechat/login', {
-    method: 'POST',
-    body: JSON.stringify({ code }),
-  });
-}
-
 export async function wechatLoginWithProfile(payload: {
   code: string;
-  openIdHint?: string;
   nickname?: string;
   avatarUrl?: string;
 }): Promise<LoginResponse> {
@@ -70,6 +68,17 @@ export async function updateMyProfile(userId: string, payload: UpdateMyProfileRe
   });
 }
 
+export async function bindWechatPhone(
+  userId: string,
+  payload: BindWechatPhoneRequest,
+): Promise<MemberProfile> {
+  return request<MemberProfile>('/members/me/phone', {
+    method: 'PATCH',
+    headers: { 'x-user-id': userId },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function applyRecharge(userId: string, payload: RechargeApplyRequest): Promise<RechargeOrder> {
   return request<RechargeOrder>('/recharges/apply', {
     method: 'POST',
@@ -86,6 +95,32 @@ export async function listMyRecharges(userId: string): Promise<RechargeOrder[]> 
 
 export async function listMyConsumptions(userId: string): Promise<ConsumptionOrder[]> {
   return request<ConsumptionOrder[]>('/consumptions/my', {
+    headers: { 'x-user-id': userId },
+  });
+}
+
+export async function createAppointment(
+  userId: string,
+  payload: CreateAppointmentRequest,
+): Promise<Appointment> {
+  return request<Appointment>('/members/me/appointments', {
+    method: 'POST',
+    headers: { 'x-user-id': userId },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listMyAppointments(userId: string): Promise<Appointment[]> {
+  return request<Appointment[]>('/members/me/appointments', {
+    headers: { 'x-user-id': userId },
+  });
+}
+
+export async function listBookedAppointmentSlots(
+  userId: string,
+  date: string,
+): Promise<BookedAppointmentSlot[]> {
+  return request<BookedAppointmentSlot[]>(`/members/appointments/booked-slots?date=${encodeURIComponent(date)}`, {
     headers: { 'x-user-id': userId },
   });
 }

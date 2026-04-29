@@ -30,7 +30,7 @@
     "include": []
   },
   "miniprogramRoot": "dist/dev/mp-weixin/",
-  "appid": "touristappid",
+  "appid": "wx1911c030d37537ff",
   "projectname": "member-miniapp",
   "editorSetting": {},
   "libVersion": "3.15.1"

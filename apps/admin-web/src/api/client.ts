@@ -1,26 +1,46 @@
 import type {
   AuditLog,
+  Appointment,
   ConsumptionOrder,
+  CreateAdminAppointmentRequest,
+  CreateMemberRequest,
   CreateConsumptionOrderRequest,
   CreateMemberLevelRequest,
+  CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  ProductType,
   RechargeOrder,
   RejectRechargeRequest,
+  UpdateAppointmentRequest,
   UpdateMemberRequest,
   UpdateMemberLevelRequest,
+  UpdateProductTypeRequest,
 } from '@member-platform/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'x-admin-id': 'admin-001',
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        'x-admin-id': 'admin-001',
+        ...(init?.headers || {}),
+      },
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('请求超时，请检查 API 或数据库是否正常');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -31,6 +51,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listMembers: () => request<MemberProfile[]>('/admin/members'),
+  createMember: (payload: CreateMemberRequest) =>
+    request<MemberProfile>('/admin/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
   getMember: (id: string) => request<MemberProfile>(`/admin/members/${id}`),
   updateMember: (id: string, payload: UpdateMemberRequest) =>
     request<MemberProfile>(`/admin/members/${id}`, {
@@ -47,6 +73,40 @@ export const api = {
     }),
   updateLevel: (id: string, payload: UpdateMemberLevelRequest) =>
     request<MemberLevel>(`/admin/member-levels/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteLevel: (id: string) =>
+    request<{ success: true }>(`/admin/member-levels/${id}`, {
+      method: 'DELETE',
+    }),
+  listProductTypes: () => request<ProductType[]>('/admin/product-types'),
+  createProductType: (payload: CreateProductTypeRequest) =>
+    request<ProductType>('/admin/product-types', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  updateProductType: (id: string, payload: UpdateProductTypeRequest) =>
+    request<ProductType>(`/admin/product-types/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteProductType: (id: string) =>
+    request<{ success: true }>(`/admin/product-types/${id}`, {
+      method: 'DELETE',
+    }),
+  listAppointments: () => request<Appointment[]>('/admin/appointments'),
+  createAppointment: (payload: CreateAdminAppointmentRequest) =>
+    request<Appointment>('/admin/appointments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  updateAppointment: (id: string, payload: UpdateAppointmentRequest) =>
+    request<Appointment>(`/admin/appointments/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

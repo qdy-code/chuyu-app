@@ -8,11 +8,12 @@ export class RechargesController {
   constructor(private readonly store: DataStoreService) {}
 
   @Post('apply')
-  apply(
+  async apply(
     @Headers('x-user-id') userId: string | undefined,
     @Body() payload: RechargeApplyDto,
-  ): RechargeOrder {
-    const effectiveUserId = userId || this.store.listMembers()[0]?.id;
+  ): Promise<RechargeOrder> {
+    const members = userId ? [] : await this.store.listMembers();
+    const effectiveUserId = userId || members[0]?.id;
     if (!effectiveUserId) {
       throw new NotFoundException('member not found');
     }
@@ -20,8 +21,9 @@ export class RechargesController {
   }
 
   @Get('my')
-  myOrders(@Headers('x-user-id') userId: string | undefined): RechargeOrder[] {
-    const effectiveUserId = userId || this.store.listMembers()[0]?.id;
+  async myOrders(@Headers('x-user-id') userId: string | undefined): Promise<RechargeOrder[]> {
+    const members = userId ? [] : await this.store.listMembers();
+    const effectiveUserId = userId || members[0]?.id;
     if (!effectiveUserId) {
       throw new NotFoundException('member not found');
     }
@@ -29,8 +31,8 @@ export class RechargesController {
   }
 
   @Get(':id')
-  detail(@Param('id') id: string): RechargeOrder {
-    const found = this.store.getRechargeById(id);
+  async detail(@Param('id') id: string): Promise<RechargeOrder> {
+    const found = await this.store.getRechargeById(id);
     if (!found) {
       throw new NotFoundException('recharge order not found');
     }

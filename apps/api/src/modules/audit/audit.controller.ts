@@ -7,7 +7,7 @@ export class AuditController {
   constructor(private readonly store: DataStoreService) {}
 
   @Get()
-  listAuditLogs(): AuditLog[] {
+  async listAuditLogs(): Promise<AuditLog[]> {
     return this.store.listAuditLogs();
   }
 }

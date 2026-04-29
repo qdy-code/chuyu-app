@@ -1,40 +1,47 @@
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
+import '../config/load-env';
 import { DataStoreService } from './data-store.service';
+import { PrismaService } from './prisma.service';
 
 describe('DataStoreService', () => {
+  let moduleRef: TestingModule;
   let store: DataStoreService;
 
   beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
-      providers: [DataStoreService],
+    moduleRef = await Test.createTestingModule({
+      providers: [PrismaService, DataStoreService],
     }).compile();
     store = moduleRef.get(DataStoreService);
-    store.resetWithSeed();
+    await store.resetWithSeed();
   });
 
-  it('creates a new member when login with a new code', () => {
-    const user = store.loginByWechat({ code: 'new-user-001' });
-    expect(user.id).toContain('u-');
-    expect(store.getMemberById(user.id)).toBeDefined();
+  afterEach(async () => {
+    await moduleRef.close();
   });
 
-  it('keeps balance ledger consistency during approve flow', () => {
-    const member = store.listMembers()[0];
+  it('creates a new member when login with a new code', async () => {
+    const user = await store.loginByWechat({ code: 'new-user-001' });
+    expect(user.id).toBe('wx-new-user-001');
+    expect(await store.getMemberById(user.id)).toBeDefined();
+  });
+
+  it('keeps balance ledger consistency during approve flow', async () => {
+    const member = (await store.listMembers())[0];
     const previousBalance = member.balance;
-    const order = store.applyRecharge(member.id, { amount: 50 });
+    const order = await store.applyRecharge(member.id, { amount: 50 });
 
-    const approved = store.approveRecharge(order.id, 'admin-001');
+    const approved = await store.approveRecharge(order.id, 'admin-001');
     expect(approved?.status).toBe('APPROVED');
 
-    const updated = store.getMemberById(member.id)!;
-    expect(updated.balance).toBe(previousBalance + 50);
+    const updated = await store.getMemberById(member.id);
+    expect(updated?.balance).toBe(previousBalance + 50);
   });
 
-  it('creates a consumption order and deducts member balance', () => {
-    const member = store.listMembers()[0];
+  it('creates a consumption order and deducts member balance', async () => {
+    const member = (await store.listMembers())[0];
     const previousBalance = member.balance;
 
-    const result = store.createConsumptionOrder('admin-001', {
+    const result = await store.createConsumptionOrder('admin-001', {
       userId: member.id,
       title: '门店消费',
       originalPrice: 20,
@@ -47,7 +54,7 @@ describe('DataStoreService', () => {
     expect(result.order).toBeDefined();
     expect(result.reason).toBeUndefined();
     expect(result.order?.finalPrice).toBe(20);
-    expect(store.getMemberById(member.id)?.balance).toBe(previousBalance - 20);
-    expect(store.listConsumptionOrders(member.id).length).toBeGreaterThan(0);
+    expect((await store.getMemberById(member.id))?.balance).toBe(previousBalance - 20);
+    expect((await store.listConsumptionOrders(member.id)).length).toBeGreaterThan(0);
   });
 });

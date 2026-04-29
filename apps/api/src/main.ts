@@ -1,4 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
+import './config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { NestExpressApplication } from '@nestjs/platform-express';

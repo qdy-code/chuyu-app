@@ -16,6 +16,8 @@ apps/admin-web/src/**/*.d.ts
 !apps/admin-web/src/env.d.ts
 apps/admin-web/src/**/*.js
 apps/api/uploads
+apps/api/prisma/generated
+apps/api/src/generated/prisma
 apps/member-miniapp/unpackage
 apps/member-miniapp/.hbuilderx
 apps/member-miniapp/project.private.config.json

@@ -9,6 +9,8 @@
     "dev:api": "pnpm --filter @member-platform/api dev",
     "dev:admin": "pnpm --filter @member-platform/admin-web dev",
     "dev:miniapp": "pnpm --filter @member-platform/member-miniapp dev",
+    "db:up": "docker compose up -d postgres",
+    "db:migrate": "pnpm --filter @member-platform/api prisma:migrate",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm --filter @member-platform/api test",

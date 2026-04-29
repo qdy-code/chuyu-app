@@ -4,6 +4,7 @@ import {
   ConsumptionOrder,
   MemberLevel,
   MemberProfile,
+  ProductType,
   RechargeOrder,
   RechargeStatus,
   RECHARGE_STATUS,
@@ -20,6 +21,7 @@ export interface DataStore {
   memberLevels: MemberLevel[];
   rechargeOrders: RechargeOrder[];
   consumptionOrders: ConsumptionOrder[];
+  productTypes: ProductType[];
   balanceLedgers: BalanceLedger[];
   auditLogs: AuditLog[];
   admins: AdminUser[];
@@ -70,6 +72,13 @@ export function createDefaultStore(): DataStore {
   ];
 
   const consumptionOrders: ConsumptionOrder[] = [];
+  const productTypes: ProductType[] = [
+    { id: 'pt-care', name: '护理', sortOrder: 10, createdAt: nowIso() },
+    { id: 'pt-therapy', name: '理疗', sortOrder: 20, createdAt: nowIso() },
+    { id: 'pt-body', name: '美体', sortOrder: 30, createdAt: nowIso() },
+    { id: 'pt-package', name: '套餐', sortOrder: 40, createdAt: nowIso() },
+    { id: 'pt-other', name: '其他', sortOrder: 50, createdAt: nowIso() },
+  ];
   const balanceLedgers: BalanceLedger[] = [];
 
   const auditLogs: AuditLog[] = [
@@ -92,6 +101,7 @@ export function createDefaultStore(): DataStore {
     memberLevels: levels,
     rechargeOrders,
     consumptionOrders,
+    productTypes,
     balanceLedgers,
     auditLogs,
     admins,

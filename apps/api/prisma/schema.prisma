@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Member {
+  id           String  @id
+  openId       String  @unique
+  phone        String? @unique
+  nickname     String
+  remark       String?
+  avatarUrl    String
+  birthday     String?
+  levelId      String
+  levelName    String
+  discountRate Float
+  balance      Float
+  points       Float
+
+  @@index([levelId])
+}
+
+model MemberLevel {
+  id           String @id
+  name         String
+  minPoints    Int
+  discountRate Float
+}
+
+model RechargeOrder {
+  id           String   @id
+  userId       String
+  amount       Float
+  status       String
+  rejectReason String?
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  @@index([userId])
+  @@index([status])
+}
+
+model ConsumptionOrder {
+  id            String   @id
+  orderNo       String   @unique
+  userId        String
+  productType   String?
+  title         String
+  originalPrice Float
+  finalPrice    Float
+  discountRate  Float
+  effectImages  String[]  @default([])
+  orderDate     String
+  remark        String?
+  createdBy     String
+  createdAt     DateTime
+
+  @@index([userId])
+  @@index([orderNo])
+}
+
+model ProductType {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model Appointment {
+  id              String   @id
+  userId          String
+  memberNickname  String
+  appointmentDate String
+  startTime       String
+  endTime         String
+  status          String
+  remark          String?
+  adminRemark     String?
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  @@index([userId])
+  @@index([appointmentDate])
+  @@index([status])
+}
+
+model BalanceLedger {
+  id             String   @id
+  userId         String
+  changeAmount   Float
+  type           String
+  relatedOrderId String?
+  createdAt      DateTime
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id
+  actorId    String
+  actorRole  String
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model AdminUser {
+  id   String @id
+  name String
+  role String
+}

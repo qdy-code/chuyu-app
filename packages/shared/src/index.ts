@@ -23,6 +23,7 @@ export interface MemberProfile {
   openId: string;
   phone?: string;
   nickname: string;
+  remark?: string;
   avatarUrl: string;
   birthday?: string;
   levelId: string;
@@ -32,9 +33,22 @@ export interface MemberProfile {
   points: number;
 }
 
+export interface CreateMemberRequest {
+  id?: string;
+  nickname: string;
+  remark?: string;
+  phone?: string;
+  birthday?: string;
+  levelId?: string;
+  discountRate?: number;
+  balance?: number;
+  points?: number;
+}
+
 export interface UpdateMemberRequest {
   id?: string;
   nickname?: string;
+  remark?: string;
   birthday?: string;
   levelId?: string;
   discountRate?: number;
@@ -45,6 +59,11 @@ export interface UpdateMemberRequest {
 export interface UpdateMyProfileRequest {
   phone?: string;
   birthday?: string;
+}
+
+export interface BindWechatPhoneRequest {
+  code: string;
+  mockPhone?: string;
 }
 
 export interface RechargeApplyRequest {
@@ -85,6 +104,75 @@ export interface ConsumptionOrder {
   remark?: string;
   createdBy: string;
   createdAt: string;
+}
+
+export interface ProductType {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CreateProductTypeRequest {
+  name: string;
+  sortOrder?: number;
+}
+
+export interface UpdateProductTypeRequest {
+  name?: string;
+  sortOrder?: number;
+}
+
+export const APPOINTMENT_STATUS = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+export type AppointmentStatus = (typeof APPOINTMENT_STATUS)[keyof typeof APPOINTMENT_STATUS];
+
+export interface Appointment {
+  id: string;
+  userId: string;
+  memberNickname: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  status: AppointmentStatus;
+  remark?: string;
+  adminRemark?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BookedAppointmentSlot {
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface CreateAppointmentRequest {
+  appointmentDate: string;
+  startTime: string;
+  endTime?: string;
+  remark?: string;
+}
+
+export interface CreateAdminAppointmentRequest extends CreateAppointmentRequest {
+  userId: string;
+  status?: AppointmentStatus;
+  adminRemark?: string;
+}
+
+export interface UpdateAppointmentRequest {
+  userId?: string;
+  appointmentDate?: string;
+  startTime?: string;
+  endTime?: string;
+  remark?: string;
+  status?: AppointmentStatus;
+  adminRemark?: string;
 }
 
 export interface CreateConsumptionOrderRequest {
