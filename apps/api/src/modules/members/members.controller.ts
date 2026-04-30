@@ -13,8 +13,7 @@ export class MembersController {
 
   @Get('me')
   async getMe(@Headers('x-user-id') userId?: string): Promise<MemberProfile> {
-    const fallbackUser = userId ? undefined : (await this.store.listMembers())[0];
-    const member = (userId && (await this.store.getMemberById(userId))) || fallbackUser;
+    const member = userId ? await this.store.getMemberById(userId) : undefined;
     if (!member) {
       throw new NotFoundException('member not found');
     }
@@ -26,13 +25,11 @@ export class MembersController {
     @Headers('x-user-id') userId: string | undefined,
     @Body() payload: UpdateMyProfileDto,
   ): Promise<MemberProfile> {
-    const members = userId ? [] : await this.store.listMembers();
-    const effectiveUserId = userId || members[0]?.id;
-    if (!effectiveUserId) {
+    if (!userId) {
       throw new NotFoundException('member not found');
     }
 
-    const result = await this.store.updateMemberSelf(effectiveUserId, payload);
+    const result = await this.store.updateMemberSelf(userId, payload);
     if (!result.member) {
       if (result.reason === 'member not found') {
         throw new NotFoundException(result.reason);

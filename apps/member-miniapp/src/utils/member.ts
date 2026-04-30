@@ -1,4 +1,4 @@
-import { getMyProfile, wechatLoginWithProfile } from '@/utils/api';
+import { bindWechatPhone, getMyProfile, wechatLoginWithProfile } from '@/utils/api';
 import { clearSession, restoreSession, sessionState, setLoginSession, setProfile } from '@/store/session';
 import type { RechargeStatus } from '@member-platform/shared';
 
@@ -30,11 +30,41 @@ export async function loginWithWechat(): Promise<void> {
   setProfile(await getMyProfile(response.user.id));
 }
 
+export async function registerWithWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
+  await loginWithWechat();
+  if (!sessionState.userId) {
+    throw new Error('微信登录失败');
+  }
+  setProfile(await bindWechatPhone(sessionState.userId, { code: phoneCode, mockPhone }));
+}
+
+export async function bindCurrentWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
+  if (!sessionState.userId) {
+    throw new Error('请先登录');
+  }
+  setProfile(await bindWechatPhone(sessionState.userId, { code: phoneCode, mockPhone }));
+}
+
 export function requireLogin(): boolean {
   if (sessionState.userId) {
     return true;
   }
-  uni.showToast({ title: '请先登录', icon: 'none' });
+  uni.showToast({ title: '请先注册登录', icon: 'none' });
+  return false;
+}
+
+export function requireRegistered(): boolean {
+  if (!requireLogin()) {
+    return false;
+  }
+  if (sessionState.profile?.phone) {
+    return true;
+  }
+
+  uni.showToast({ title: '请先完成手机号注册', icon: 'none' });
+  setTimeout(() => {
+    uni.navigateTo({ url: '/pages/account/account' });
+  }, 500);
   return false;
 }
 

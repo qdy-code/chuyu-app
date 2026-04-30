@@ -2,19 +2,20 @@
   <view class="page">
     <view class="header-card">
       <text class="header-title">账户资料</text>
+      <text class="header-desc">管理手机号、生日和本机登录状态</text>
     </view>
 
     <view v-if="!sessionState.profile" class="card">
-      <text class="empty-title">请先登录</text>
-      <button class="primary-btn" @click="goHome">返回首页</button>
+      <text class="empty-title">请先注册登录</text>
+      <button class="primary-btn" @click="goHome">返回首页注册</button>
     </view>
 
     <template v-else>
       <view class="card">
         <text class="section-title">手机号</text>
         <view class="info-row">
-          <text class="info-label">手机号</text>
-          <text class="info-value">{{ sessionState.profile.phone || '未绑定' }}</text>
+          <text class="info-label">当前手机号</text>
+          <text class="info-value">{{ sessionState.profile.phone || '未注册' }}</text>
         </view>
         <button
           class="primary-btn"
@@ -22,7 +23,7 @@
           @getphonenumber="handlePhoneNumber"
           :disabled="phoneLoading"
         >
-          {{ phoneLoading ? '绑定中...' : sessionState.profile.phone ? '更新手机号' : '绑定手机号' }}
+          {{ phoneLoading ? '处理中...' : sessionState.profile.phone ? '更新手机号' : '完成手机号注册' }}
         </button>
       </view>
 
@@ -40,15 +41,25 @@
       </view>
 
       <view class="card">
-        <text class="section-title">账户信息</text>
+        <text class="section-title">会员信息</text>
         <view class="info-row">
           <text class="info-label">会员ID</text>
           <text class="info-value wrap">{{ sessionState.profile.id }}</text>
         </view>
         <view class="info-row">
+          <text class="info-label">昵称</text>
+          <text class="info-value">{{ sessionState.profile.nickname }}</text>
+        </view>
+        <view class="info-row">
           <text class="info-label">会员等级</text>
           <text class="info-value">{{ sessionState.profile.levelName }}</text>
         </view>
+      </view>
+
+      <view class="card danger-zone">
+        <text class="section-title">登录状态</text>
+        <text class="hint">退出后会清除本机缓存的会员登录状态，可重新使用当前微信手机号注册/登录。</text>
+        <button class="logout-btn" @click="confirmLogout">退出登录</button>
       </view>
     </template>
   </view>
@@ -57,9 +68,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { bindWechatPhone, updateMyProfile } from '@/utils/api';
-import { sessionState, setProfile } from '@/store/session';
-import { refreshSessionProfile } from '@/utils/member';
+import { updateMyProfile } from '@/utils/api';
+import { clearSession, sessionState, setProfile } from '@/store/session';
+import { bindCurrentWechatPhone, refreshSessionProfile } from '@/utils/member';
 
 type PhoneNumberEvent = {
   detail: {
@@ -81,7 +92,7 @@ async function refresh() {
 
 async function handlePhoneNumber(event: PhoneNumberEvent) {
   if (!sessionState.userId) {
-    uni.showToast({ title: '请先登录', icon: 'none' });
+    uni.showToast({ title: '请先注册登录', icon: 'none' });
     return;
   }
 
@@ -95,30 +106,33 @@ async function handlePhoneNumber(event: PhoneNumberEvent) {
 }
 
 async function handlePhoneAuthorizeFail(event: PhoneNumberEvent) {
+  console.warn('getPhoneNumber failed:', event.detail);
   const errorCode = event.detail.errorCode ?? event.detail.errno;
   const errMsg = event.detail.errMsg || '';
   const isDevtoolsSystemError = errorCode === -10000 || errMsg.includes('-10000');
 
-  if (!isDevtoolsSystemError || !isLocalMockEnabled()) {
-    uni.showToast({ title: '未获得手机号授权', icon: 'none' });
+  if (isDevtoolsSystemError && import.meta.env.VITE_ENABLE_MOCK_PHONE === 'true') {
+    const confirmed = await showModal({
+      title: '模拟手机号注册',
+      content: '当前已开启模拟手机号，是否使用测试手机号完成绑定？',
+      confirmText: '模拟绑定',
+    });
+    if (confirmed) {
+      await submitPhoneBinding('mock-phone-code', '13800138000');
+    }
     return;
   }
 
-  const confirmed = await showModal({
-    title: '手机号绑定',
-    content: '当前环境无法获取手机号，是否使用测试手机号？',
-    confirmText: '模拟绑定',
+  uni.showToast({
+    title: phoneAuthorizeFailText(errorCode, errMsg),
+    icon: 'none',
   });
-
-  if (confirmed) {
-    await submitPhoneBinding('mock-phone-code', '13800138000');
-  }
 }
 
 async function submitPhoneBinding(code: string, mockPhone?: string) {
   phoneLoading.value = true;
   try {
-    setProfile(await bindWechatPhone(sessionState.userId, { code, mockPhone }));
+    await bindCurrentWechatPhone(code, mockPhone);
     uni.showToast({ title: '手机号已绑定', icon: 'success' });
     await refresh();
   } catch (error) {
@@ -135,7 +149,7 @@ function handleBirthdayChange(event: { detail: { value: string } }) {
 
 async function saveBirthday() {
   if (!sessionState.userId) {
-    uni.showToast({ title: '请先登录', icon: 'none' });
+    uni.showToast({ title: '请先注册登录', icon: 'none' });
     return;
   }
   if (!birthday.value) {
@@ -163,12 +177,37 @@ function showModal(options: { title: string; content: string; confirmText: strin
   });
 }
 
-function isLocalMockEnabled(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_PHONE === 'true';
+function phoneAuthorizeFailText(errorCode: number | undefined, errMsg: string): string {
+  if (errorCode === -10000 || errMsg.includes('-10000')) {
+    return '请用手机预览授权手机号';
+  }
+  if (errorCode === 102 || errMsg.includes('no permission') || errMsg.includes('has no permission')) {
+    return '小程序未开通手机号能力';
+  }
+  if (errMsg.includes('user deny') || errMsg.includes('cancel')) {
+    return '已取消手机号授权';
+  }
+  return `手机号授权失败${errorCode ? `:${errorCode}` : ''}`;
 }
 
 function goHome() {
-  uni.navigateBack({ fail: () => uni.redirectTo({ url: '/pages/index/index' }) });
+  uni.reLaunch({ url: '/pages/index/index' });
+}
+
+async function confirmLogout() {
+  const confirmed = await showModal({
+    title: '退出登录',
+    content: '确认清除当前会员登录状态吗？',
+    confirmText: '退出',
+  });
+  if (!confirmed) return;
+
+  clearSession();
+  birthday.value = '';
+  uni.showToast({ title: '已退出登录', icon: 'success' });
+  setTimeout(() => {
+    uni.reLaunch({ url: '/pages/index/index' });
+  }, 500);
 }
 
 onShow(refresh);
@@ -202,6 +241,12 @@ onShow(refresh);
   font-weight: 900;
 }
 
+.header-desc {
+  display: block;
+  margin-top: 10rpx;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 24rpx;
+}
 
 .card {
   margin-top: 22rpx;
@@ -257,4 +302,23 @@ onShow(refresh);
   color: #9b1717;
 }
 
+.danger-zone {
+  border: 1px solid rgba(215, 45, 45, 0.14);
+}
+
+.hint {
+  display: block;
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.logout-btn {
+  margin-top: 24rpx;
+  border-radius: 999rpx;
+  background: #fff1f1;
+  color: #b42318;
+  font-weight: 900;
+}
 </style>

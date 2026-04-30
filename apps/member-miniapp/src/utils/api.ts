@@ -12,7 +12,7 @@ import type {
 } from '@member-platform/shared';
 import { sessionState } from '@/store/session';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://192.168.31.118:3000';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return new Promise<T>((resolve, reject) => {

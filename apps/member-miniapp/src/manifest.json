@@ -5,7 +5,8 @@
   "versionName": "0.2.0",
   "versionCode": "200",
   "mp-weixin": {
-    "appid": "touristappid",
+    "appid": "wx1911c030d37537ff",
+    "lazyCodeLoading": "requiredComponents",
     "setting": {
       "urlCheck": false
     }
