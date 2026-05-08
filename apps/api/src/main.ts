@@ -8,7 +8,14 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors();
+
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.enableCors(
+    corsOrigin
+      ? { origin: corsOrigin.split(',').map((s) => s.trim()), credentials: true }
+      : undefined,
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -28,7 +35,6 @@ async function bootstrap() {
   const port = Number(process.env.API_PORT || 3000);
   const host = process.env.API_HOST || '0.0.0.0';
   await app.listen(port, host);
-  console.log(`API is running on http://${host}:${port}`);
 }
 
 bootstrap();

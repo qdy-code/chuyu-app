@@ -57,7 +57,7 @@ async function refresh() {
   if (!sessionState.userId) {
     return;
   }
-  records.value = await listMyRecharges(sessionState.userId);
+  records.value = await listMyRecharges();
 }
 
 async function submitRecharge() {
@@ -71,7 +71,7 @@ async function submitRecharge() {
 
   submitting.value = true;
   try {
-    await applyRecharge(sessionState.userId, { amount: amount.value });
+    await applyRecharge({ amount: amount.value });
     uni.showToast({ title: '申请已提交', icon: 'success' });
     await refresh();
   } finally {

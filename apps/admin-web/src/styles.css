@@ -19,6 +19,63 @@ body {
   background: radial-gradient(circle at top right, #d1fae5 0%, var(--bg) 30%);
 }
 
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card {
+  width: 340px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+}
+
+.login-card h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.login-card p {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-card input {
+  text-align: center;
+  font-size: 15px;
+  padding: 10px;
+}
+
+.login-card button {
+  width: 100%;
+  font-size: 15px;
+  padding: 10px;
+}
+
+.login-error {
+  margin-top: 12px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.logout-btn {
+  margin-top: auto;
+  color: #94a3b8 !important;
+  font-size: 13px;
+}
+
 .layout {
   min-height: 100vh;
   display: grid;
@@ -30,6 +87,8 @@ body {
   background: #0f172a;
   color: #fff;
   padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar h1 {

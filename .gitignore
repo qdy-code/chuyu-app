@@ -10,6 +10,7 @@ dist
 *.tsbuildinfo
 .DS_Store
 .codex-logs
+.claude/
 apps/**/dist
 apps/**/.vite
 apps/admin-web/src/**/*.d.ts

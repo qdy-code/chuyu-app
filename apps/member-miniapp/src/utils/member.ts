@@ -9,11 +9,10 @@ export async function refreshSessionProfile(): Promise<boolean> {
   }
 
   try {
-    setProfile(await getMyProfile(sessionState.userId));
+    setProfile(await getMyProfile());
     return true;
-  } catch (error) {
+  } catch {
     clearSession();
-    console.error('refresh profile failed:', error);
     return false;
   }
 }
@@ -27,7 +26,7 @@ export async function loginWithWechat(): Promise<void> {
     avatarUrl: profile.avatarUrl,
   });
   setLoginSession(response);
-  setProfile(await getMyProfile(response.user.id));
+  setProfile(await getMyProfile());
 }
 
 export async function registerWithWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
@@ -35,14 +34,14 @@ export async function registerWithWechatPhone(phoneCode: string, mockPhone?: str
   if (!sessionState.userId) {
     throw new Error('微信登录失败');
   }
-  setProfile(await bindWechatPhone(sessionState.userId, { code: phoneCode, mockPhone }));
+  setProfile(await bindWechatPhone({ code: phoneCode, mockPhone }));
 }
 
 export async function bindCurrentWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
   if (!sessionState.userId) {
     throw new Error('请先登录');
   }
-  setProfile(await bindWechatPhone(sessionState.userId, { code: phoneCode, mockPhone }));
+  setProfile(await bindWechatPhone({ code: phoneCode, mockPhone }));
 }
 
 export function requireLogin(): boolean {

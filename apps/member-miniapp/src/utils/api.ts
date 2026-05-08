@@ -54,75 +54,52 @@ export async function wechatLoginWithProfile(payload: {
   });
 }
 
-export async function getMyProfile(userId: string): Promise<MemberProfile> {
-  return request<MemberProfile>('/members/me', {
-    headers: { 'x-user-id': userId },
-  });
+export async function getMyProfile(): Promise<MemberProfile> {
+  return request<MemberProfile>('/members/me');
 }
 
-export async function updateMyProfile(userId: string, payload: UpdateMyProfileRequest): Promise<MemberProfile> {
+export async function updateMyProfile(payload: UpdateMyProfileRequest): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me', {
     method: 'PATCH',
-    headers: { 'x-user-id': userId },
     body: JSON.stringify(payload),
   });
 }
 
-export async function bindWechatPhone(
-  userId: string,
-  payload: BindWechatPhoneRequest,
-): Promise<MemberProfile> {
+export async function bindWechatPhone(payload: BindWechatPhoneRequest): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me/phone', {
     method: 'PATCH',
-    headers: { 'x-user-id': userId },
     body: JSON.stringify(payload),
   });
 }
 
-export async function applyRecharge(userId: string, payload: RechargeApplyRequest): Promise<RechargeOrder> {
+export async function applyRecharge(payload: RechargeApplyRequest): Promise<RechargeOrder> {
   return request<RechargeOrder>('/recharges/apply', {
     method: 'POST',
-    headers: { 'x-user-id': userId },
     body: JSON.stringify(payload),
   });
 }
 
-export async function listMyRecharges(userId: string): Promise<RechargeOrder[]> {
-  return request<RechargeOrder[]>('/recharges/my', {
-    headers: { 'x-user-id': userId },
-  });
+export async function listMyRecharges(): Promise<RechargeOrder[]> {
+  return request<RechargeOrder[]>('/recharges/my');
 }
 
-export async function listMyConsumptions(userId: string): Promise<ConsumptionOrder[]> {
-  return request<ConsumptionOrder[]>('/consumptions/my', {
-    headers: { 'x-user-id': userId },
-  });
+export async function listMyConsumptions(): Promise<ConsumptionOrder[]> {
+  return request<ConsumptionOrder[]>('/consumptions/my');
 }
 
-export async function createAppointment(
-  userId: string,
-  payload: CreateAppointmentRequest,
-): Promise<Appointment> {
+export async function createAppointment(payload: CreateAppointmentRequest): Promise<Appointment> {
   return request<Appointment>('/members/me/appointments', {
     method: 'POST',
-    headers: { 'x-user-id': userId },
     body: JSON.stringify(payload),
   });
 }
 
-export async function listMyAppointments(userId: string): Promise<Appointment[]> {
-  return request<Appointment[]>('/members/me/appointments', {
-    headers: { 'x-user-id': userId },
-  });
+export async function listMyAppointments(): Promise<Appointment[]> {
+  return request<Appointment[]>('/members/me/appointments');
 }
 
-export async function listBookedAppointmentSlots(
-  userId: string,
-  date: string,
-): Promise<BookedAppointmentSlot[]> {
-  return request<BookedAppointmentSlot[]>(`/members/appointments/booked-slots?date=${encodeURIComponent(date)}`, {
-    headers: { 'x-user-id': userId },
-  });
+export async function listBookedAppointmentSlots(date: string): Promise<BookedAppointmentSlot[]> {
+  return request<BookedAppointmentSlot[]>(`/members/appointments/booked-slots?date=${encodeURIComponent(date)}`);
 }
 
 export function toAbsoluteImageUrl(relativeUrl: string): string {

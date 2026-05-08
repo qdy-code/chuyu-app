@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chuyu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chuyu
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: member_platform
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U chuyu -d member_platform']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: chuyu-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:3000:3000'
+    environment:
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+      DATABASE_URL: postgresql://chuyu:${DB_PASSWORD}@postgres:5432/member_platform?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      MINIAPP_LOGIN_MODE: real
+      WECHAT_MINIAPP_APP_ID: ${WECHAT_MINIAPP_APP_ID}
+      WECHAT_MINIAPP_APP_SECRET: ${WECHAT_MINIAPP_APP_SECRET}
+    volumes:
+      - uploads-data:/app/apps/api/uploads
+
+  nginx:
+    image: nginx:alpine
+    container_name: chuyu-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./apps/admin-web/dist:/usr/share/nginx/html/admin:ro
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+volumes:
+  postgres-data:
+  uploads-data:
+  certbot-www:
+  letsencrypt:

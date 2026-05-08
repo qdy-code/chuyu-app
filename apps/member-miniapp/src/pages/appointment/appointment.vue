@@ -283,12 +283,12 @@ function statusText(status: AppointmentStatus): string {
 
 async function loadAppointments() {
   if (!sessionState.userId) return;
-  appointments.value = await listMyAppointments(sessionState.userId);
+  appointments.value = await listMyAppointments();
 }
 
 async function loadBookedSlots() {
   if (!sessionState.userId) return;
-  bookedSlots.value = await listBookedAppointmentSlots(sessionState.userId, form.value.appointmentDate);
+  bookedSlots.value = await listBookedAppointmentSlots(form.value.appointmentDate);
   if (selectedMinuteIndex.value >= minuteOptions.value.length) {
     selectedMinuteIndex.value = Math.max(0, minuteOptions.value.length - 1);
   }
@@ -333,7 +333,7 @@ async function submitAppointment() {
       return;
     }
 
-    await createAppointment(sessionState.userId, {
+    await createAppointment({
       appointmentDate: form.value.appointmentDate,
       startTime: selectedArrivalTime.value,
       remark: form.value.remark || undefined,

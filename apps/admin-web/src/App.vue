@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { api, toAbsoluteImageUrl } from '@/api/client';
+import { adminLogin, clearAdminToken, getAdminToken, api, toAbsoluteImageUrl } from '@/api/client';
 import type {
   Appointment,
   AppointmentStatus,
@@ -13,6 +13,31 @@ import type {
 } from '@member-platform/shared';
 
 type Tab = 'members' | 'levels' | 'recharges' | 'orders' | 'appointments' | 'logs';
+
+const isLoggedIn = ref(Boolean(getAdminToken()));
+const loginPassword = ref('');
+const loginError = ref('');
+const loginLoading = ref(false);
+
+async function handleLogin() {
+  loginLoading.value = true;
+  loginError.value = '';
+  try {
+    await adminLogin(loginPassword.value);
+    isLoggedIn.value = true;
+    loginPassword.value = '';
+    loadAll();
+  } catch {
+    loginError.value = '密码错误，请重试';
+  } finally {
+    loginLoading.value = false;
+  }
+}
+
+function handleLogout() {
+  clearAdminToken();
+  isLoggedIn.value = false;
+}
 
 const currentTab = ref<Tab>('members');
 const loading = ref(false);
@@ -802,7 +827,27 @@ onMounted(loadAll);
 </script>
 
 <template>
-  <div class="layout">
+  <div v-if="!isLoggedIn" class="login-page">
+    <div class="login-card">
+      <h1>会员后台</h1>
+      <p>请输入管理密码登录</p>
+      <form @submit.prevent="handleLogin">
+        <input
+          v-model="loginPassword"
+          type="password"
+          placeholder="管理密码"
+          :disabled="loginLoading"
+          autofocus
+        />
+        <button type="submit" class="primary" :disabled="loginLoading">
+          {{ loginLoading ? '登录中...' : '登录' }}
+        </button>
+      </form>
+      <p v-if="loginError" class="login-error">{{ loginError }}</p>
+    </div>
+  </div>
+
+  <div v-else class="layout">
     <aside class="sidebar">
       <h1>会员后台 v1</h1>
       <button class="nav-item" :class="{ active: currentTab === 'members' }" @click="currentTab = 'members'">
@@ -824,13 +869,13 @@ onMounted(loadAll);
       <button class="nav-item" :class="{ active: currentTab === 'logs' }" @click="currentTab = 'logs'">
         审计日志
       </button>
+      <button class="nav-item logout-btn" @click="handleLogout">退出登录</button>
     </aside>
 
     <main class="main">
       <div class="card inline" style="justify-content: space-between">
         <div>
-          <strong>演示管理员：</strong>admin-001
-          <small style="margin-left: 12px">{{ loading ? '加载中...' : '已连接 API' }}</small>
+          <small>{{ loading ? '加载中...' : '已连接 API' }}</small>
         </div>
         <button class="primary" @click="loadAll">刷新数据</button>
       </div>
@@ -1124,7 +1169,6 @@ onMounted(loadAll);
         </table>
       </section>
     </main>
-  </div>
 
   <div v-if="selectedAppointmentDate" class="modal-mask" @click.self="closeAppointmentDay">
     <div class="modal-card appointment-modal">
@@ -1351,5 +1395,6 @@ onMounted(loadAll);
         </div>
       </div>
     </div>
+  </div>
   </div>
 </template>

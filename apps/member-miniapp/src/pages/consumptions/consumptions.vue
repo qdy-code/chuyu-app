@@ -51,7 +51,7 @@ async function refresh() {
   if (!sessionState.userId) {
     return;
   }
-  records.value = await listMyConsumptions(sessionState.userId);
+  records.value = await listMyConsumptions();
 }
 
 function previewImages(images: string[], current: string) {

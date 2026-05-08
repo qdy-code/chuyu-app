@@ -106,7 +106,6 @@ async function handlePhoneNumber(event: PhoneNumberEvent) {
 }
 
 async function handlePhoneAuthorizeFail(event: PhoneNumberEvent) {
-  console.warn('getPhoneNumber failed:', event.detail);
   const errorCode = event.detail.errorCode ?? event.detail.errno;
   const errMsg = event.detail.errMsg || '';
   const isDevtoolsSystemError = errorCode === -10000 || errMsg.includes('-10000');
@@ -159,7 +158,7 @@ async function saveBirthday() {
 
   birthdaySaving.value = true;
   try {
-    setProfile(await updateMyProfile(sessionState.userId, { birthday: birthday.value }));
+    setProfile(await updateMyProfile({ birthday: birthday.value }));
     uni.showToast({ title: '生日已保存', icon: 'success' });
   } finally {
     birthdaySaving.value = false;

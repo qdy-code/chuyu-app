@@ -18,3 +18,9 @@ export class WechatLoginDto implements WechatLoginRequest {
   @IsOptional()
   avatarUrl?: string;
 }
+
+export class AdminLoginDto {
+  @IsString()
+  @IsNotEmpty()
+  password!: string;
+}

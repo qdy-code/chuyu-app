@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+.claude
+*.log
+apps/admin-web/dist
+apps/member-miniapp/dist

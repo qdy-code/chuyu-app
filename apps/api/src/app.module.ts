@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { AdminAuthMiddleware, MemberAuthMiddleware } from './common/auth.middleware';
 import { AuthModule } from './modules/auth/auth.module';
 import { MembersModule } from './modules/members/members.module';
 import { RechargesModule } from './modules/recharges/recharges.module';
@@ -18,4 +19,13 @@ import { StoreModule } from './store/store.module';
     ConsumptionsModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer
+      .apply(MemberAuthMiddleware)
+      .forRoutes('members', 'recharges', 'consumptions');
+    consumer
+      .apply(AdminAuthMiddleware)
+      .forRoutes('admin');
+  }
+}

@@ -19,6 +19,37 @@ import type {
 } from '@member-platform/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const TOKEN_KEY = 'admin-token';
+
+export function getAdminToken(): string {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+export function setAdminToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAdminToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export async function adminLogin(password: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/admin/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    throw new Error('密码错误');
+  }
+  const data = (await response.json()) as { token: string };
+  setAdminToken(data.token);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
@@ -27,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${API_BASE}${path}`, {
       headers: {
-        'x-admin-id': 'admin-001',
+        ...authHeaders(),
         ...(init?.headers || {}),
       },
       ...init,
@@ -40,6 +71,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw error;
   } finally {
     window.clearTimeout(timeout);
+  }
+
+  if (response.status === 401) {
+    clearAdminToken();
+    window.location.reload();
+    throw new Error('登录已过期，请重新登录');
   }
 
   if (!response.ok) {
@@ -136,9 +173,7 @@ export const api = {
 
     const response = await fetch(`${API_BASE}/admin/uploads/images`, {
       method: 'POST',
-      headers: {
-        'x-admin-id': 'admin-001',
-      },
+      headers: authHeaders(),
       body: form,
     });
 

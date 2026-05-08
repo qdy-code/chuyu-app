@@ -117,7 +117,6 @@ async function handleRegisterPhone(event: PhoneNumberEvent) {
     await registerWithWechatPhone(phoneCode);
     uni.showToast({ title: '注册成功', icon: 'success' });
   } catch (error) {
-    console.error('register error:', error);
     uni.showToast({ title: errorMessage(error), icon: 'none' });
   } finally {
     registering.value = false;
@@ -125,7 +124,6 @@ async function handleRegisterPhone(event: PhoneNumberEvent) {
 }
 
 async function handlePhoneAuthorizeFail(event: PhoneNumberEvent) {
-  console.warn('getPhoneNumber failed:', event.detail);
   const errorCode = event.detail.errorCode ?? event.detail.errno;
   const errMsg = event.detail.errMsg || '';
   const isDevtoolsSystemError = errorCode === -10000 || errMsg.includes('-10000');

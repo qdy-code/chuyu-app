@@ -29,7 +29,7 @@
     "ignore": [],
     "include": []
   },
-  "miniprogramRoot": "dist/dev/mp-weixin/",
+  "miniprogramRoot": "dist/build/mp-weixin/",
   "appid": "wx1911c030d37537ff",
   "projectname": "member-miniapp",
   "editorSetting": {},
