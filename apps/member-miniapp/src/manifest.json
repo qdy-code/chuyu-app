@@ -8,7 +8,12 @@
     "appid": "wx1911c030d37537ff",
     "lazyCodeLoading": "requiredComponents",
     "setting": {
-      "urlCheck": true
+      "urlCheck": true,
+      "minified": true,
+      "es6": true,
+      "postcss": true,
+      "minifyWXSS": true,
+      "minifyWXML": true
     }
   }
 }

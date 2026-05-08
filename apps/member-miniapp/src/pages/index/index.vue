@@ -11,7 +11,7 @@
     <view v-if="!isRegistered" class="register-card">
       <view class="register-copy">
         <text class="register-kicker">正式会员注册</text>
-        <text class="register-title">使用微信手机号成为初屿会员</text>
+        <text class="register-title">手机号快捷登录，成为初屿会员</text>
         <text class="register-desc">手机号将作为会员ID，用于查询余额、积分、预约和消费记录。</text>
       </view>
       <button
@@ -61,10 +61,6 @@
           <text class="module-icon">👑</text>
           <text class="module-title">会员卡</text>
         </view>
-        <view class="module module-recharge" @click="openPage('/pages/recharge/recharge')">
-          <text class="module-icon">💳</text>
-          <text class="module-title">充值</text>
-        </view>
         <view class="module module-orders" @click="openPage('/pages/consumptions/consumptions')">
           <text class="module-icon">🧾</text>
           <text class="module-title">消费记录</text>
@@ -101,7 +97,7 @@ const registering = ref(false);
 
 const isRegistered = computed(() => Boolean(sessionState.profile?.phone));
 const welcomeText = computed(() => sessionState.profile?.nickname || '会员中心');
-const registerButtonText = computed(() => (sessionState.userId ? '完成手机号注册' : '微信手机号注册/登录'));
+const registerButtonText = computed(() => (sessionState.userId ? '完成手机号绑定' : '手机号快捷登录'));
 
 async function handleRegisterPhone(event: PhoneNumberEvent) {
   if (registering.value) return;
@@ -179,11 +175,14 @@ function showModal(options: { title: string; content: string; confirmText: strin
 }
 
 function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : '注册失败';
+  const message = error instanceof Error ? error.message : '登录失败';
   if (message.includes('phone already')) return '手机号已被绑定';
   if (message.includes('url not in domain list')) return '接口域名未配置';
   if (message.includes('request:fail')) return '网络请求失败';
-  return message.slice(0, 18) || '注册失败';
+  if (message.includes('invalid code') || message.includes('40029') || message.includes('Internal server error') || message.includes('500')) {
+    return '登录票据已过期，请重试';
+  }
+  return message.slice(0, 18) || '登录失败';
 }
 
 function phoneAuthorizeFailText(errorCode: number | undefined, errMsg: string): string {

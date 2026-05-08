@@ -13,12 +13,6 @@
       }
     },
     {
-      "path": "pages/recharge/recharge",
-      "style": {
-        "navigationBarTitleText": "充值中心"
-      }
-    },
-    {
       "path": "pages/appointment/appointment",
       "style": {
         "navigationBarTitleText": "预约到店"

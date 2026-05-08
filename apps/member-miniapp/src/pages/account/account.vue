@@ -58,7 +58,7 @@
 
       <view class="card danger-zone">
         <text class="section-title">登录状态</text>
-        <text class="hint">退出后会清除本机缓存的会员登录状态，可重新使用当前微信手机号注册/登录。</text>
+        <text class="hint">退出后会清除本机缓存的会员登录状态，可重新使用手机号快捷登录。</text>
         <button class="logout-btn" @click="confirmLogout">退出登录</button>
       </view>
     </template>

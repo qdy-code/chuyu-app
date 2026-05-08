@@ -32,7 +32,7 @@ export async function loginWithWechat(): Promise<void> {
 export async function registerWithWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
   await loginWithWechat();
   if (!sessionState.userId) {
-    throw new Error('微信登录失败');
+    throw new Error('登录失败');
   }
   setProfile(await bindWechatPhone({ code: phoneCode, mockPhone }));
 }
@@ -98,9 +98,9 @@ function requestLoginCode(): Promise<string> {
           resolve(result.code);
           return;
         }
-        reject(new Error('微信登录未返回 code'));
+        reject(new Error('登录未返回 code'));
       },
-      fail: (error) => reject(new Error(error.errMsg || '微信登录失败')),
+      fail: (error) => reject(new Error(error.errMsg || '登录失败')),
     });
   });
 }

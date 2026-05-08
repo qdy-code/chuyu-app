@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
 interface WechatLoginResponse {
   openid?: string;
@@ -44,7 +44,7 @@ export class WechatMiniappService {
 
     const data = await this.getJson<WechatLoginResponse>(url.toString());
     if (!data.openid) {
-      throw new Error(`wechat login failed: ${data.errmsg || data.errcode || 'missing openid'}`);
+      throw new BadRequestException(`wechat login failed: ${data.errmsg || data.errcode || 'missing openid'}`);
     }
     return data.openid;
   }
@@ -65,7 +65,7 @@ export class WechatMiniappService {
     );
     const phone = data.phone_info?.purePhoneNumber || data.phone_info?.phoneNumber;
     if (!phone) {
-      throw new Error(`wechat phone failed: ${data.errmsg || data.errcode || 'missing phone number'}`);
+      throw new BadRequestException(`wechat phone failed: ${data.errmsg || data.errcode || 'missing phone number'}`);
     }
     return phone;
   }
