@@ -2,8 +2,8 @@
   "name": "初屿会员",
   "appid": "__UNI__CHUYU_MEMBER__",
   "description": "初屿会员用户端",
-  "versionName": "0.2.0",
-  "versionCode": "200",
+  "versionName": "0.3.0",
+  "versionCode": "300",
   "mp-weixin": {
     "appid": "wx1911c030d37537ff",
     "lazyCodeLoading": "requiredComponents",

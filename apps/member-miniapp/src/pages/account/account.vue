@@ -2,31 +2,15 @@
   <view class="page">
     <view class="header-card">
       <text class="header-title">账户资料</text>
-      <text class="header-desc">管理手机号、生日和本机登录状态</text>
+      <text class="header-desc">查看会员信息、维护生日并管理本机登录状态</text>
     </view>
 
     <view v-if="!sessionState.profile" class="card">
-      <text class="empty-title">请先注册登录</text>
-      <button class="primary-btn" @click="goHome">返回首页注册</button>
+      <text class="empty-title">请先登录</text>
+      <button class="primary-btn" @click="goHome">返回首页登录</button>
     </view>
 
     <template v-else>
-      <view class="card">
-        <text class="section-title">手机号</text>
-        <view class="info-row">
-          <text class="info-label">当前手机号</text>
-          <text class="info-value">{{ sessionState.profile.phone || '未注册' }}</text>
-        </view>
-        <button
-          class="primary-btn"
-          open-type="getPhoneNumber"
-          @getphonenumber="handlePhoneNumber"
-          :disabled="phoneLoading"
-        >
-          {{ phoneLoading ? '处理中...' : sessionState.profile.phone ? '更新手机号' : '完成手机号注册' }}
-        </button>
-      </view>
-
       <view class="card">
         <text class="section-title">生日</text>
         <view class="info-row">
@@ -54,11 +38,16 @@
           <text class="info-label">会员等级</text>
           <text class="info-value">{{ sessionState.profile.levelName }}</text>
         </view>
+        <view class="info-row">
+          <text class="info-label">联系手机号</text>
+          <text class="info-value">{{ sessionState.profile.phone || '门店登记后显示' }}</text>
+        </view>
+        <text class="hint">手机号由门店管理员在到店时为你登记，无需在小程序内填写。</text>
       </view>
 
       <view class="card danger-zone">
         <text class="section-title">登录状态</text>
-        <text class="hint">退出后会清除本机缓存的会员登录状态，可重新使用手机号快捷登录。</text>
+        <text class="hint">退出后会清除本机缓存的会员登录状态，下次进入会自动重新登录。</text>
         <button class="logout-btn" @click="confirmLogout">退出登录</button>
       </view>
     </template>
@@ -70,76 +59,14 @@ import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { updateMyProfile } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
-import { bindCurrentWechatPhone, refreshSessionProfile } from '@/utils/member';
-
-type PhoneNumberEvent = {
-  detail: {
-    code?: string;
-    errMsg?: string;
-    errno?: number;
-    errorCode?: number;
-  };
-};
+import { refreshSessionProfile } from '@/utils/member';
 
 const birthday = ref('');
-const phoneLoading = ref(false);
 const birthdaySaving = ref(false);
 
 async function refresh() {
   await refreshSessionProfile();
   birthday.value = sessionState.profile?.birthday || '';
-}
-
-async function handlePhoneNumber(event: PhoneNumberEvent) {
-  if (!sessionState.userId) {
-    uni.showToast({ title: '请先注册登录', icon: 'none' });
-    return;
-  }
-
-  const code = event.detail.code;
-  if (!code) {
-    await handlePhoneAuthorizeFail(event);
-    return;
-  }
-
-  await submitPhoneBinding(code);
-}
-
-async function handlePhoneAuthorizeFail(event: PhoneNumberEvent) {
-  const errorCode = event.detail.errorCode ?? event.detail.errno;
-  const errMsg = event.detail.errMsg || '';
-  const isDevtoolsSystemError = errorCode === -10000 || errMsg.includes('-10000');
-
-  if (isDevtoolsSystemError && import.meta.env.VITE_ENABLE_MOCK_PHONE === 'true') {
-    const confirmed = await showModal({
-      title: '模拟手机号注册',
-      content: '当前已开启模拟手机号，是否使用测试手机号完成绑定？',
-      confirmText: '模拟绑定',
-    });
-    if (confirmed) {
-      await submitPhoneBinding('mock-phone-code', '13800138000');
-    }
-    return;
-  }
-
-  uni.showToast({
-    title: phoneAuthorizeFailText(errorCode, errMsg),
-    icon: 'none',
-  });
-}
-
-async function submitPhoneBinding(code: string, mockPhone?: string) {
-  phoneLoading.value = true;
-  try {
-    await bindCurrentWechatPhone(code, mockPhone);
-    uni.showToast({ title: '手机号已绑定', icon: 'success' });
-    await refresh();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '绑定失败';
-    uni.showToast({ title: message.includes('phone already') ? '手机号已被绑定' : '绑定失败', icon: 'none' });
-  } finally {
-    phoneLoading.value = false;
-  }
 }
 
 function handleBirthdayChange(event: { detail: { value: string } }) {
@@ -148,7 +75,7 @@ function handleBirthdayChange(event: { detail: { value: string } }) {
 
 async function saveBirthday() {
   if (!sessionState.userId) {
-    uni.showToast({ title: '请先注册登录', icon: 'none' });
+    uni.showToast({ title: '请先登录', icon: 'none' });
     return;
   }
   if (!birthday.value) {
@@ -174,19 +101,6 @@ function showModal(options: { title: string; content: string; confirmText: strin
       fail: () => resolve(false),
     });
   });
-}
-
-function phoneAuthorizeFailText(errorCode: number | undefined, errMsg: string): string {
-  if (errorCode === -10000 || errMsg.includes('-10000')) {
-    return '请用手机预览授权手机号';
-  }
-  if (errorCode === 102 || errMsg.includes('no permission') || errMsg.includes('has no permission')) {
-    return '小程序未开通手机号能力';
-  }
-  if (errMsg.includes('user deny') || errMsg.includes('cancel')) {
-    return '已取消手机号授权';
-  }
-  return `手机号授权失败${errorCode ? `:${errorCode}` : ''}`;
 }
 
 function goHome() {

@@ -1,6 +1,5 @@
 import type {
   Appointment,
-  BindWechatPhoneRequest,
   BookedAppointmentSlot,
   ConsumptionOrder,
   CreateAppointmentRequest,
@@ -60,13 +59,6 @@ export async function getMyProfile(): Promise<MemberProfile> {
 
 export async function updateMyProfile(payload: UpdateMyProfileRequest): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me', {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function bindWechatPhone(payload: BindWechatPhoneRequest): Promise<MemberProfile> {
-  return request<MemberProfile>('/members/me/phone', {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });

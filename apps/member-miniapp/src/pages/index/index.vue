@@ -8,19 +8,14 @@
       <button v-if="sessionState.userId" class="account-chip" @click="openAccount">账户</button>
     </view>
 
-    <view v-if="!isRegistered" class="register-card">
+    <view v-if="!sessionState.userId" class="register-card">
       <view class="register-copy">
-        <text class="register-kicker">正式会员注册</text>
-        <text class="register-title">手机号快捷登录，成为初屿会员</text>
-        <text class="register-desc">手机号将作为会员ID，用于查询余额、积分、预约和消费记录。</text>
+        <text class="register-kicker">会员中心</text>
+        <text class="register-title">{{ loggingIn ? '正在为你准备会员档案…' : '点击下方按钮进入会员中心' }}</text>
+        <text class="register-desc">使用微信账号一键进入，无需填写手机号即可享受会员折扣、预约和消费记录服务。</text>
       </view>
-      <button
-        class="register-btn"
-        open-type="getPhoneNumber"
-        @getphonenumber="handleRegisterPhone"
-        :disabled="registering"
-      >
-        {{ registering ? '注册中...' : registerButtonText }}
+      <button class="register-btn" :disabled="loggingIn" @click="handleEnter">
+        {{ loggingIn ? '进入中...' : '进入会员中心' }}
       </button>
     </view>
 
@@ -29,7 +24,7 @@
         <text class="hero-label">我的会员卡</text>
         <text class="hero-title">{{ sessionState.profile?.levelName || '初屿会员' }}</text>
         <text v-if="sessionState.profile" class="hero-desc">ID：{{ sessionState.profile.id }}</text>
-        <text v-else class="hero-desc">完成手机号授权后自动生成正式会员档案</text>
+        <text v-else class="hero-desc">登录后自动生成会员档案</text>
       </view>
       <view class="hero-badge">
         <text class="badge-value">{{ sessionState.profile ? discountText(sessionState.profile.discountRate) : 'JOIN' }}</text>
@@ -49,8 +44,8 @@
       </view>
       <view class="divider" />
       <view class="stat">
-        <text class="stat-value">{{ sessionState.profile.phone ? '已注册' : '待注册' }}</text>
-        <text class="stat-label">状态</text>
+        <text class="stat-value">{{ sessionState.profile.levelName || '会员' }}</text>
+        <text class="stat-label">等级</text>
       </view>
     </view>
 
@@ -82,101 +77,43 @@
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState } from '@/store/session';
-import { discountText, formatMoney, refreshSessionProfile, registerWithWechatPhone, requireRegistered } from '@/utils/member';
+import { discountText, ensureSession, formatMoney, requireLogin } from '@/utils/member';
 
-type PhoneNumberEvent = {
-  detail: {
-    code?: string;
-    errMsg?: string;
-    errno?: number;
-    errorCode?: number;
-  };
-};
+const loggingIn = ref(false);
 
-const registering = ref(false);
-
-const isRegistered = computed(() => Boolean(sessionState.profile?.phone));
 const welcomeText = computed(() => sessionState.profile?.nickname || '会员中心');
-const registerButtonText = computed(() => (sessionState.userId ? '完成手机号绑定' : '手机号快捷登录'));
 
-async function handleRegisterPhone(event: PhoneNumberEvent) {
-  if (registering.value) return;
-
-  const phoneCode = event.detail.code;
-  if (!phoneCode) {
-    await handlePhoneAuthorizeFail(event);
-    return;
-  }
-
-  registering.value = true;
+async function handleEnter() {
+  if (loggingIn.value) return;
+  loggingIn.value = true;
   try {
-    await registerWithWechatPhone(phoneCode);
-    uni.showToast({ title: '注册成功', icon: 'success' });
+    const ok = await ensureSession();
+    if (!ok) {
+      uni.showToast({ title: '登录失败，请重试', icon: 'none' });
+    }
   } catch (error) {
     uni.showToast({ title: errorMessage(error), icon: 'none' });
   } finally {
-    registering.value = false;
+    loggingIn.value = false;
   }
-}
-
-async function handlePhoneAuthorizeFail(event: PhoneNumberEvent) {
-  const errorCode = event.detail.errorCode ?? event.detail.errno;
-  const errMsg = event.detail.errMsg || '';
-  const isDevtoolsSystemError = errorCode === -10000 || errMsg.includes('-10000');
-
-  if (isDevtoolsSystemError && import.meta.env.VITE_ENABLE_MOCK_PHONE === 'true') {
-    const confirmed = await showModal({
-      title: '模拟手机号注册',
-      content: '当前已开启模拟手机号，是否使用测试手机号完成注册？',
-      confirmText: '模拟注册',
-    });
-    if (!confirmed) return;
-
-    registering.value = true;
-    try {
-      await registerWithWechatPhone('mock-phone-code', '13800138000');
-      uni.showToast({ title: '模拟注册成功', icon: 'success' });
-    } finally {
-      registering.value = false;
-    }
-    return;
-  }
-
-  uni.showToast({
-    title: phoneAuthorizeFailText(errorCode, errMsg),
-    icon: 'none',
-  });
 }
 
 function openPage(url: string) {
-  if (!requireRegistered()) {
+  if (!requireLogin()) {
     return;
   }
   uni.navigateTo({ url });
 }
 
 function openAccount() {
-  if (!sessionState.userId) {
-    uni.showToast({ title: '请先完成注册', icon: 'none' });
+  if (!requireLogin()) {
     return;
   }
   uni.navigateTo({ url: '/pages/account/account' });
 }
 
-function showModal(options: { title: string; content: string; confirmText: string }): Promise<boolean> {
-  return new Promise((resolve) => {
-    uni.showModal({
-      ...options,
-      cancelText: '取消',
-      success: (result) => resolve(Boolean(result.confirm)),
-      fail: () => resolve(false),
-    });
-  });
-}
-
 function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : '登录失败';
-  if (message.includes('phone already')) return '手机号已被绑定';
   if (message.includes('url not in domain list')) return '接口域名未配置';
   if (message.includes('request:fail')) return '网络请求失败';
   if (message.includes('invalid code') || message.includes('40029') || message.includes('Internal server error') || message.includes('500')) {
@@ -185,20 +122,15 @@ function errorMessage(error: unknown): string {
   return message.slice(0, 18) || '登录失败';
 }
 
-function phoneAuthorizeFailText(errorCode: number | undefined, errMsg: string): string {
-  if (errorCode === -10000 || errMsg.includes('-10000')) {
-    return '请用手机预览授权手机号';
+onShow(async () => {
+  if (loggingIn.value) return;
+  loggingIn.value = true;
+  try {
+    await ensureSession();
+  } finally {
+    loggingIn.value = false;
   }
-  if (errorCode === 102 || errMsg.includes('no permission') || errMsg.includes('has no permission')) {
-    return '小程序未开通手机号能力';
-  }
-  if (errMsg.includes('user deny') || errMsg.includes('cancel')) {
-    return '已取消手机号授权';
-  }
-  return `手机号授权失败${errorCode ? `:${errorCode}` : ''}`;
-}
-
-onShow(refreshSessionProfile);
+});
 </script>
 
 <style scoped>
@@ -407,10 +339,6 @@ onShow(refreshSessionProfile);
 
 .module-card {
   background: #fff3e0;
-}
-
-.module-recharge {
-  background: #ffecec;
 }
 
 .module-orders {

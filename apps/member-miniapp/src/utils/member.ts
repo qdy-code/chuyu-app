@@ -1,4 +1,4 @@
-import { bindWechatPhone, getMyProfile, wechatLoginWithProfile } from '@/utils/api';
+import { getMyProfile, wechatLoginWithProfile } from '@/utils/api';
 import { clearSession, restoreSession, sessionState, setLoginSession, setProfile } from '@/store/session';
 import type { RechargeStatus } from '@member-platform/shared';
 
@@ -17,6 +17,17 @@ export async function refreshSessionProfile(): Promise<boolean> {
   }
 }
 
+export async function ensureSession(): Promise<boolean> {
+  const restored = await refreshSessionProfile();
+  if (restored) return true;
+  try {
+    await loginWithWechat();
+    return Boolean(sessionState.userId);
+  } catch {
+    return false;
+  }
+}
+
 export async function loginWithWechat(): Promise<void> {
   const code = await requestLoginCode();
   const profile = await requestUserProfile();
@@ -29,42 +40,16 @@ export async function loginWithWechat(): Promise<void> {
   setProfile(await getMyProfile());
 }
 
-export async function registerWithWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
-  await loginWithWechat();
-  if (!sessionState.userId) {
-    throw new Error('登录失败');
-  }
-  setProfile(await bindWechatPhone({ code: phoneCode, mockPhone }));
-}
-
-export async function bindCurrentWechatPhone(phoneCode: string, mockPhone?: string): Promise<void> {
-  if (!sessionState.userId) {
-    throw new Error('请先登录');
-  }
-  setProfile(await bindWechatPhone({ code: phoneCode, mockPhone }));
-}
-
 export function requireLogin(): boolean {
   if (sessionState.userId) {
     return true;
   }
-  uni.showToast({ title: '请先注册登录', icon: 'none' });
+  uni.showToast({ title: '请先登录', icon: 'none' });
   return false;
 }
 
 export function requireRegistered(): boolean {
-  if (!requireLogin()) {
-    return false;
-  }
-  if (sessionState.profile?.phone) {
-    return true;
-  }
-
-  uni.showToast({ title: '请先完成手机号注册', icon: 'none' });
-  setTimeout(() => {
-    uni.navigateTo({ url: '/pages/account/account' });
-  }, 500);
-  return false;
+  return requireLogin();
 }
 
 export function formatMoney(value: number | undefined): string {
