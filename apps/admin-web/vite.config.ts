@@ -12,4 +12,16 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    chunkSizeWarningLimit: 1024,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vue: ['vue'],
+          naive: ['naive-ui'],
+          icons: ['lucide-vue-next'],
+        },
+      },
+    },
+  },
 });

@@ -32,9 +32,11 @@ def main() -> int:
     out = stdout.read().decode("utf-8", errors="replace")
     err = stderr.read().decode("utf-8", errors="replace")
     rc = stdout.channel.recv_exit_status()
-    sys.stdout.write(out)
-    if err:
-        sys.stderr.write(err)
+    out_b = out.encode("utf-8", errors="replace")
+    err_b = err.encode("utf-8", errors="replace")
+    sys.stdout.buffer.write(out_b)
+    if err_b:
+        sys.stderr.buffer.write(err_b)
     client.close()
     return rc
 
