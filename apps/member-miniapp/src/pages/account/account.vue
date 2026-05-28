@@ -51,6 +51,17 @@
         <button class="logout-btn" @click="confirmLogout">退出登录</button>
       </view>
     </template>
+
+    <view class="footer">
+      <view class="legal-links">
+        <text class="legal-link" @click="openPrivacy">隐私政策</text>
+        <text class="legal-divider">·</text>
+        <text class="legal-link" @click="openTerms">用户协议</text>
+      </view>
+      <text class="footer-line">© {{ year }} 初屿会员</text>
+      <text class="footer-line">{{ icpRecord }}</text>
+      <text v-if="publicSecurityRecord" class="footer-line">{{ publicSecurityRecord }}</text>
+    </view>
   </view>
 </template>
 
@@ -64,6 +75,10 @@ import { refreshSessionProfile } from '@/utils/member';
 const birthday = ref('');
 const birthdaySaving = ref(false);
 
+const year = new Date().getFullYear();
+const icpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined) || '陕ICP备XXXXXXXX号';
+const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
+
 async function refresh() {
   await refreshSessionProfile();
   birthday.value = sessionState.profile?.birthday || '';
@@ -71,6 +86,14 @@ async function refresh() {
 
 function handleBirthdayChange(event: { detail: { value: string } }) {
   birthday.value = event.detail.value;
+}
+
+function openPrivacy() {
+  uni.navigateTo({ url: '/pages/legal/privacy' });
+}
+
+function openTerms() {
+  uni.navigateTo({ url: '/pages/legal/terms' });
 }
 
 async function saveBirthday() {
@@ -233,5 +256,37 @@ onShow(refresh);
   background: #fff1f1;
   color: #b42318;
   font-weight: 900;
+}
+
+.footer {
+  margin-top: 40rpx;
+  padding: 24rpx 0 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.footer-line {
+  font-size: 22rpx;
+  color: #98a2b3;
+  line-height: 1.6;
+}
+
+.legal-links {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.legal-link {
+  font-size: 24rpx;
+  color: #cf2c2c;
+}
+
+.legal-divider {
+  font-size: 24rpx;
+  color: #d0d5dd;
 }
 </style>

@@ -35,6 +35,18 @@
       "style": {
         "navigationBarTitleText": "账户资料"
       }
+    },
+    {
+      "path": "pages/legal/privacy",
+      "style": {
+        "navigationBarTitleText": "隐私政策"
+      }
+    },
+    {
+      "path": "pages/legal/terms",
+      "style": {
+        "navigationBarTitleText": "用户服务协议"
+      }
     }
   ],
   "globalStyle": {

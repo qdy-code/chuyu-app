@@ -17,6 +17,12 @@
       <button class="register-btn" :disabled="loggingIn" @click="handleEnter">
         {{ loggingIn ? '进入中...' : '进入会员中心' }}
       </button>
+      <view class="legal-hint">
+        <text>进入即表示同意</text>
+        <text class="legal-link" @click="openTerms">《用户协议》</text>
+        <text>与</text>
+        <text class="legal-link" @click="openPrivacy">《隐私政策》</text>
+      </view>
     </view>
 
     <view class="hero-card" @click="openPage('/pages/card/card')">
@@ -110,6 +116,14 @@ function openAccount() {
     return;
   }
   uni.navigateTo({ url: '/pages/account/account' });
+}
+
+function openPrivacy() {
+  uni.navigateTo({ url: '/pages/legal/privacy' });
+}
+
+function openTerms() {
+  uni.navigateTo({ url: '/pages/legal/terms' });
 }
 
 function errorMessage(error: unknown): string {
@@ -211,6 +225,22 @@ onShow(async () => {
   background: #d72d2d;
   color: #fff;
   font-weight: 900;
+}
+
+.legal-hint {
+  margin-top: 22rpx;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4rpx;
+  font-size: 22rpx;
+  color: #98a2b3;
+  line-height: 1.6;
+}
+
+.legal-hint .legal-link {
+  color: #cf2c2c;
 }
 
 .hero-card {

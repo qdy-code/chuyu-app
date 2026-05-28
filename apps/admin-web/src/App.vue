@@ -14,6 +14,10 @@ import type {
 
 type Tab = 'members' | 'levels' | 'recharges' | 'orders' | 'appointments' | 'logs';
 
+const icpRecord = import.meta.env.VITE_ICP_RECORD as string | undefined;
+const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
+const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string | undefined;
+
 const isLoggedIn = ref(Boolean(getAdminToken()));
 const loginPassword = ref('');
 const loginError = ref('');
@@ -1396,5 +1400,15 @@ onMounted(loadAll);
       </div>
     </div>
   </div>
+
+    <footer class="site-footer">
+      <span>© {{ new Date().getFullYear() }} 初屿会员</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer noopener">
+        {{ icpRecord || '陕ICP备XXXXXXXX号' }}
+      </a>
+      <a v-if="publicSecurityRecord" :href="publicSecurityLink" target="_blank" rel="noreferrer noopener">
+        {{ publicSecurityRecord }}
+      </a>
+    </footer>
   </div>
 </template>
