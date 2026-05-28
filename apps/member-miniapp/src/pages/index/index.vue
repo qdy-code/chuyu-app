@@ -83,7 +83,7 @@
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState } from '@/store/session';
-import { discountText, ensureSession, formatMoney, requireLogin } from '@/utils/member';
+import { discountText, ensureSession, formatMoney, refreshSessionProfile, requireLogin } from '@/utils/member';
 
 const loggingIn = ref(false);
 
@@ -136,14 +136,10 @@ function errorMessage(error: unknown): string {
   return message.slice(0, 18) || '登录失败';
 }
 
-onShow(async () => {
-  if (loggingIn.value) return;
-  loggingIn.value = true;
-  try {
-    await ensureSession();
-  } finally {
-    loggingIn.value = false;
-  }
+onShow(() => {
+  // 只恢复本机缓存的登录态，不主动发起 wx.login。
+  // 用户点"进入会员中心"按钮时才走 ensureSession，避免退出登录后立刻被自动登回。
+  refreshSessionProfile();
 });
 </script>
 
