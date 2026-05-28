@@ -55,13 +55,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15000);
   let response: Response;
+  // 注意顺序：必须先把 init 展开，再覆盖 headers，否则 init.headers 会反过来覆盖
+  // 我们合并好的（含 Authorization）headers —— 这就是之前 PATCH/POST 必现 401 的根因。
+  const { headers: initHeaders, ...restInit } = init || {};
   try {
     response = await fetch(`${API_BASE}${path}`, {
+      ...restInit,
       headers: {
         ...authHeaders(),
-        ...(init?.headers || {}),
+        ...(initHeaders || {}),
       },
-      ...init,
       signal: controller.signal,
     });
   } catch (error) {
