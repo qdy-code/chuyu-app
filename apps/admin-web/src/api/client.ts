@@ -75,7 +75,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (response.status === 401) {
     clearAdminToken();
-    window.location.reload();
+    // 通过自定义事件通知 UI 重新渲染登录态，避免 window.location.reload() 触发的循环刷新。
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('admin-auth-expired'));
+    }
     throw new Error('登录已过期，请重新登录');
   }
 

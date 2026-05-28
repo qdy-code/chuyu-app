@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { adminLogin, clearAdminToken, getAdminToken, api, toAbsoluteImageUrl } from '@/api/client';
 import type {
   Appointment,
@@ -827,7 +827,23 @@ watch(
   },
 );
 
-onMounted(loadAll);
+// 监听 401 事件：token 失效时把 UI 切回登录页，而不是刷新整页（之前的刷新会引发死循环）。
+function handleAuthExpired() {
+  isLoggedIn.value = false;
+  loginError.value = '登录已过期，请重新登录';
+}
+
+onMounted(() => {
+  window.addEventListener('admin-auth-expired', handleAuthExpired);
+  // 只在已登录时才发起后台数据加载，避免未登录状态访问 /admin 触发 401 死循环。
+  if (isLoggedIn.value) {
+    loadAll();
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('admin-auth-expired', handleAuthExpired);
+});
 </script>
 
 <template>
