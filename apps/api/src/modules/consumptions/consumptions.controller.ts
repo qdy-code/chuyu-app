@@ -8,11 +8,9 @@ export class ConsumptionsController {
 
   @Get('my')
   async myOrders(@Headers('x-user-id') userId: string | undefined): Promise<ConsumptionOrder[]> {
-    const members = userId ? [] : await this.store.listMembers();
-    const effectiveUserId = userId || members[0]?.id;
-    if (!effectiveUserId) {
+    if (!userId) {
       throw new NotFoundException('member not found');
     }
-    return this.store.listConsumptionOrders(effectiveUserId);
+    return this.store.listConsumptionOrders(userId);
   }
 }

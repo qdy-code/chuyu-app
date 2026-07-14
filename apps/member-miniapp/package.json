@@ -4,14 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "uni -p mp-weixin",
+    "dev:mp-weixin": "uni -p mp-weixin",
     "build": "uni build -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "check:release": "node scripts/check-release-config.mjs",
+    "check:release-output": "node scripts/check-release-output.mjs",
+    "build:release": "node scripts/check-release-config.mjs && uni build -p mp-weixin --mode production && node scripts/check-release-output.mjs",
     "lint": "echo miniapp-lint-skip"
   },
   "dependencies": {
-    "@dcloudio/uni-app": "3.0.0-alpha-5000720260327001",
-    "@dcloudio/uni-components": "3.0.0-alpha-5000720260327001",
-    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5000720260327001",
-    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5000720260327001",
+    "@dcloudio/uni-app": "3.0.0-alpha-5020120260706001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5020120260706001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5020120260706001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020120260706001",
     "@member-platform/shared": "workspace:*",
     "vue": "3.4.21"
   },

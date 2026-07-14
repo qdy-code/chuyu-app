@@ -9,8 +9,6 @@ export type RechargeStatus = (typeof RECHARGE_STATUS)[keyof typeof RECHARGE_STAT
 export interface WechatLoginRequest {
   code: string;
   openIdHint?: string;
-  nickname?: string;
-  avatarUrl?: string;
 }
 
 export interface LoginResponse {
@@ -46,7 +44,6 @@ export interface CreateMemberRequest {
 }
 
 export interface UpdateMemberRequest {
-  id?: string;
   nickname?: string;
   remark?: string;
   birthday?: string;
@@ -59,6 +56,7 @@ export interface UpdateMemberRequest {
 export interface UpdateMyProfileRequest {
   phone?: string;
   birthday?: string;
+  nickname?: string;
 }
 
 export interface BindWechatPhoneRequest {
@@ -68,6 +66,13 @@ export interface BindWechatPhoneRequest {
 
 export interface RechargeApplyRequest {
   amount: number;
+  remark?: string;
+}
+
+export interface AdminRechargeRequest {
+  userId: string;
+  amount?: number;
+  points?: number;
   remark?: string;
 }
 
@@ -85,7 +90,7 @@ export interface BalanceLedger {
   id: string;
   userId: string;
   changeAmount: number;
-  type: 'RECHARGE_APPROVED' | 'CONSUME_ORDER_CREATED' | 'MANUAL_ADJUST';
+  type: 'RECHARGE_APPROVED' | 'CONSUME_ORDER_CREATED' | 'CONSUME_ORDER_DELETED' | 'MANUAL_ADJUST';
   relatedOrderId?: string;
   createdAt: string;
 }
@@ -106,6 +111,23 @@ export interface ConsumptionOrder {
   createdAt: string;
 }
 
+export interface RevenuePeriodSummary {
+  period: string;
+  consumptionAmount: number;
+  originalAmount: number;
+  discountAmount: number;
+  orderCount: number;
+  rechargeAmount: number;
+  rechargeCount: number;
+}
+
+export interface RevenueOverview {
+  selectedMonth: string;
+  monthSummary: RevenuePeriodSummary;
+  daily: RevenuePeriodSummary[];
+  monthly: RevenuePeriodSummary[];
+}
+
 export interface ProductType {
   id: string;
   name: string;
@@ -123,6 +145,74 @@ export interface UpdateProductTypeRequest {
   sortOrder?: number;
 }
 
+export const BUSINESS_TYPE = {
+  NAIL: 'NAIL',
+  ACCESSORY: 'ACCESSORY',
+  FLOWER: 'FLOWER',
+} as const;
+
+export type BusinessType = (typeof BUSINESS_TYPE)[keyof typeof BUSINESS_TYPE];
+
+export interface ProductCategory {
+  id: string;
+  businessType: BusinessType;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CatalogProduct {
+  id: string;
+  businessType: BusinessType;
+  categoryId?: string;
+  categoryName?: string;
+  name: string;
+  description?: string;
+  referencePrice?: number;
+  images: string[];
+  sortOrder: number;
+  isActive: boolean;
+  reservedByUserId?: string;
+  reservedAppointmentId?: string;
+  reservedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NailProduct = CatalogProduct & { businessType: typeof BUSINESS_TYPE.NAIL };
+export type AccessoryProduct = CatalogProduct & { businessType: typeof BUSINESS_TYPE.ACCESSORY };
+export type FlowerProduct = CatalogProduct & { businessType: typeof BUSINESS_TYPE.FLOWER };
+
+export interface CreateProductCategoryRequest {
+  name: string;
+  sortOrder?: number;
+}
+
+export interface UpdateProductCategoryRequest {
+  name?: string;
+  sortOrder?: number;
+}
+
+export interface CreateCatalogProductRequest {
+  categoryId?: string;
+  name: string;
+  description?: string;
+  referencePrice?: number;
+  images?: string[];
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface UpdateCatalogProductRequest {
+  categoryId?: string | null;
+  name?: string;
+  description?: string;
+  referencePrice?: number | null;
+  images?: string[];
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
 export const APPOINTMENT_STATUS = {
   PENDING: 'PENDING',
   CONFIRMED: 'CONFIRMED',
@@ -136,6 +226,10 @@ export interface Appointment {
   id: string;
   userId: string;
   memberNickname: string;
+  businessType: BusinessType;
+  productId?: string;
+  productName?: string;
+  productImages?: string[];
   appointmentDate: string;
   startTime: string;
   endTime: string;
@@ -147,12 +241,32 @@ export interface Appointment {
 }
 
 export interface BookedAppointmentSlot {
+  businessType: BusinessType;
   appointmentDate: string;
   startTime: string;
   endTime: string;
 }
 
+export type AppointmentAvailabilityScope = BusinessType | 'ALL';
+
+export interface AppointmentUnavailableDate {
+  id: string;
+  appointmentDate: string;
+  businessType: AppointmentAvailabilityScope;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAppointmentUnavailableDateRequest {
+  appointmentDate: string;
+  businessType: AppointmentAvailabilityScope;
+  reason?: string;
+}
+
 export interface CreateAppointmentRequest {
+  businessType?: BusinessType;
+  productId?: string;
   appointmentDate: string;
   startTime: string;
   endTime?: string;
@@ -167,6 +281,8 @@ export interface CreateAdminAppointmentRequest extends CreateAppointmentRequest 
 
 export interface UpdateAppointmentRequest {
   userId?: string;
+  businessType?: BusinessType;
+  productId?: string | null;
   appointmentDate?: string;
   startTime?: string;
   endTime?: string;

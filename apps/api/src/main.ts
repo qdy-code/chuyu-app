@@ -4,10 +4,21 @@ import { NestFactory } from '@nestjs/core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { getUploadDir } from './config/upload-path';
+import { validateProductionEnv } from './config/validate-production-env';
 import { AppModule } from './app.module';
+import type { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
+  validateProductionEnv();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.disable('x-powered-by');
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
 
   const corsOrigin = process.env.CORS_ORIGIN;
   app.enableCors(
@@ -37,4 +48,7 @@ async function bootstrap() {
   await app.listen(port, host);
 }
 
-bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

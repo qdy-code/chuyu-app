@@ -4,34 +4,48 @@ import {
   AuditLog,
   APPOINTMENT_STATUS,
   Appointment,
+  AdminRechargeRequest,
+  AppointmentAvailabilityScope,
   AppointmentStatus,
+  AppointmentUnavailableDate,
   BalanceLedger,
   BookedAppointmentSlot,
+  BUSINESS_TYPE,
+  BusinessType,
+  CatalogProduct,
   CreateAdminAppointmentRequest,
+  CreateAppointmentUnavailableDateRequest,
   ConsumptionOrder,
   CreateAppointmentRequest,
+  CreateCatalogProductRequest,
   CreateConsumptionOrderRequest,
   CreateMemberRequest,
   CreateMemberLevelRequest,
+  CreateProductCategoryRequest,
   CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  ProductCategory,
   ProductType,
   RechargeApplyRequest,
   RechargeOrder,
+  RevenueOverview,
   RechargeStatus,
   RECHARGE_STATUS,
   RejectRechargeRequest,
+  UpdateCatalogProductRequest,
   UpdateMyProfileRequest,
   UpdateMemberRequest,
   UpdateMemberLevelRequest,
   UpdateAppointmentRequest,
+  UpdateProductCategoryRequest,
   UpdateProductTypeRequest,
   WechatLoginRequest,
 } from '@member-platform/shared';
 import { AdminUser, createDefaultStore, DataStore, isFinalStatus } from './types';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
+import { buildRevenueOverview } from './revenue-summary';
 
 type DbMember = {
   id: string;
@@ -46,6 +60,7 @@ type DbMember = {
   discountRate: number;
   balance: number;
   points: number;
+  accountIdChangedAt: Date | null;
 };
 
 type DbMemberLevel = {
@@ -88,10 +103,37 @@ type DbProductType = {
   createdAt: Date;
 };
 
+type DbProductCategory = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: Date;
+};
+
+type DbCatalogProduct = {
+  id: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  name: string;
+  description: string | null;
+  referencePrice: number | null;
+  images: string[];
+  sortOrder: number;
+  isActive: boolean;
+  reservedByUserId?: string | null;
+  reservedAppointmentId?: string | null;
+  reservedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type DbAppointment = {
   id: string;
   userId: string;
   memberNickname: string;
+  businessType: string;
+  productId: string | null;
+  productName: string | null;
   appointmentDate: string;
   startTime: string;
   endTime: string;
@@ -139,7 +181,14 @@ export class DataStoreService {
       await tx.auditLog.deleteMany();
       await tx.balanceLedger.deleteMany();
       await tx.consumptionOrder.deleteMany();
+      await tx.appointmentUnavailableDate.deleteMany();
       await tx.appointment.deleteMany();
+      await tx.nailProduct.deleteMany();
+      await tx.accessoryProduct.deleteMany();
+      await tx.flowerProduct.deleteMany();
+      await tx.nailCategory.deleteMany();
+      await tx.accessoryCategory.deleteMany();
+      await tx.flowerCategory.deleteMany();
       await tx.productType.deleteMany();
       await tx.rechargeOrder.deleteMany();
       await tx.member.deleteMany();
@@ -156,6 +205,36 @@ export class DataStoreService {
       });
       await tx.productType.createMany({
         data: seed.productTypes.map((item) => this.productTypeToDb(item)),
+      });
+      await tx.nailCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.NAIL)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+      await tx.accessoryCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.ACCESSORY)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+      await tx.flowerCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.FLOWER)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+      await tx.nailProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.NAIL)
+          .map((item) => this.catalogProductToDb(item)),
+      });
+      await tx.accessoryProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.ACCESSORY)
+          .map((item) => this.catalogProductToDb(item)),
+      });
+      await tx.flowerProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.FLOWER)
+          .map((item) => this.catalogProductToDb(item)),
       });
       await tx.balanceLedger.createMany({
         data: seed.balanceLedgers.map((ledger) => this.ledgerToDb(ledger)),
@@ -193,10 +272,13 @@ export class DataStoreService {
   async createMember(payload: CreateMemberRequest): Promise<{ member?: MemberProfile; reason?: string }> {
     await this.ensureBootstrapData();
 
-    const memberId = payload.id?.trim() || `u-${uuid()}`;
+    const memberId = payload.id?.trim() || (await this.generateMemberNumber());
     const nickname = payload.nickname.trim();
     if (!nickname) {
       return { reason: 'nickname is required' };
+    }
+    if (payload.birthday && !this.isValidBirthdayMonthDay(payload.birthday)) {
+      return { reason: 'birthday must use valid MM-DD format' };
     }
 
     const duplicated = await this.prisma.member.findFirst({
@@ -222,7 +304,7 @@ export class DataStoreService {
         phone: payload.phone?.trim() || null,
         nickname,
         remark: payload.remark?.trim() || null,
-        avatarUrl: 'https://dummyimage.com/120x120/1f2937/ffffff.png&text=VIP',
+        avatarUrl: '',
         birthday: payload.birthday || null,
         levelId: level.id,
         levelName: level.name,
@@ -256,14 +338,7 @@ export class DataStoreService {
     const openId = payload.openIdHint?.trim() || `wx-${payload.code}`;
     const found = await this.prisma.member.findUnique({ where: { openId } });
     if (found) {
-      const updated = await this.prisma.member.update({
-        where: { id: found.id },
-        data: {
-          ...(payload.nickname ? { nickname: payload.nickname } : {}),
-          ...(payload.avatarUrl ? { avatarUrl: payload.avatarUrl } : {}),
-        },
-      });
-      return this.toMemberProfile(updated);
+      return this.toMemberProfile(found);
     }
 
     const level = await this.prisma.memberLevel.findFirst({ orderBy: { minPoints: 'asc' } });
@@ -271,14 +346,15 @@ export class DataStoreService {
       throw new Error('member level seed data is missing');
     }
 
+    const memberId = await this.generateMemberNumber();
     const user = await this.prisma.member.create({
       data: {
-        id: openId,
+        id: memberId,
         openId,
         phone: null,
-        nickname: payload.nickname || `微信用户-${payload.code.slice(0, 6)}`,
+        nickname: '微信用户',
         remark: null,
-        avatarUrl: payload.avatarUrl || 'https://dummyimage.com/120x120/1f2937/ffffff.png&text=WX',
+        avatarUrl: '',
         birthday: null,
         levelId: level.id,
         levelName: level.name,
@@ -346,6 +422,104 @@ export class DataStoreService {
     });
 
     return this.toRechargeOrder(order);
+  }
+
+  async createAdminRecharge(
+    adminId: string,
+    payload: AdminRechargeRequest,
+  ): Promise<{ member?: MemberProfile; order?: RechargeOrder; reason?: string }> {
+    const amount = this.round2(payload.amount ?? 0);
+    const points = this.round2(payload.points ?? 0);
+    if (amount <= 0 && points <= 0) {
+      return { reason: 'amount or points must be greater than 0' };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.member.findUnique({ where: { id: payload.userId } });
+      if (!user) {
+        return { reason: 'member not found' };
+      }
+
+      const beforeBalance = user.balance;
+      const beforePoints = user.points;
+      const nextBalance = this.round2(user.balance + amount);
+      const nextPoints = this.round2(user.points + points);
+      const matchedLevel = await this.getMatchedLevel(nextPoints, tx);
+
+      let rechargeOrder: DbRechargeOrder | undefined;
+      if (amount > 0) {
+        const today = this.localDateString();
+        const existing = await tx.rechargeOrder.findMany({
+          select: { id: true },
+          where: { id: { startsWith: `R${this.compactDate(today)}` } },
+        });
+        const nextRechargeId = this.createDailyCode(
+          'R',
+          today,
+          existing.map((item) => item.id),
+        );
+
+        rechargeOrder = await tx.rechargeOrder.create({
+          data: {
+            id: nextRechargeId,
+            userId: user.id,
+            amount,
+            status: RECHARGE_STATUS.APPROVED,
+            rejectReason: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        await tx.balanceLedger.create({
+          data: {
+            id: `bl-${uuid()}`,
+            userId: user.id,
+            changeAmount: amount,
+            type: 'RECHARGE_APPROVED',
+            relatedOrderId: rechargeOrder.id,
+            createdAt: new Date(),
+          },
+        });
+      }
+
+      const updated = await tx.member.update({
+        where: { id: user.id },
+        data: {
+          balance: nextBalance,
+          points: nextPoints,
+          ...(matchedLevel
+            ? {
+                levelId: matchedLevel.id,
+                levelName: matchedLevel.name,
+                discountRate: matchedLevel.discountRate,
+              }
+            : {}),
+        },
+      });
+
+      await this.writeAudit(
+        {
+          actorId: adminId,
+          actorRole: 'ADMIN',
+          action: 'member.recharge',
+          targetType: 'member',
+          targetId: user.id,
+          metadata: {
+            ...(payload.remark?.trim() ? { remark: payload.remark.trim() } : {}),
+            rechargeOrderId: rechargeOrder?.id,
+            balance: { from: beforeBalance, to: nextBalance, change: amount },
+            points: { from: beforePoints, to: nextPoints, change: points },
+          },
+        },
+        tx,
+      );
+
+      return {
+        member: this.toMemberProfile(updated),
+        order: rechargeOrder ? this.toRechargeOrder(rechargeOrder) : undefined,
+      };
+    });
   }
 
   async approveRecharge(
@@ -467,6 +641,95 @@ export class DataStoreService {
       orderBy: { createdAt: 'desc' },
     });
     return orders.map((order) => this.toConsumptionOrder(order));
+  }
+
+  async deleteConsumptionOrder(
+    orderId: string,
+    adminId: string,
+  ): Promise<{ success: boolean; reason?: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.consumptionOrder.findUnique({ where: { id: orderId } });
+      if (!order) {
+        return { success: false, reason: 'consumption order not found' };
+      }
+
+      const member = await tx.member.findUnique({ where: { id: order.userId } });
+      if (!member) {
+        return { success: false, reason: 'member not found' };
+      }
+
+      const nextBalance = this.round2(member.balance + order.finalPrice);
+      await tx.member.update({
+        where: { id: member.id },
+        data: { balance: nextBalance },
+      });
+      await tx.consumptionOrder.delete({ where: { id: order.id } });
+      await tx.balanceLedger.create({
+        data: {
+          id: `bl-${uuid()}`,
+          userId: member.id,
+          changeAmount: order.finalPrice,
+          type: 'CONSUME_ORDER_DELETED',
+          relatedOrderId: order.id,
+          createdAt: new Date(),
+        },
+      });
+      await this.writeAudit(
+        {
+          actorId: adminId,
+          actorRole: 'ADMIN',
+          action: 'consumption.delete',
+          targetType: 'consumption_order',
+          targetId: order.id,
+          metadata: {
+            orderNo: order.orderNo,
+            userId: order.userId,
+            title: order.title,
+            orderDate: order.orderDate,
+            finalPrice: order.finalPrice,
+            balance: { from: member.balance, to: nextBalance, change: order.finalPrice },
+          },
+        },
+        tx,
+      );
+
+      return { success: true };
+    });
+  }
+
+  async getRevenueOverview(selectedMonth = this.chinaDateString(new Date()).slice(0, 7)): Promise<RevenueOverview> {
+    const match = /^(20\d{2})-(0[1-9]|1[0-2])$/.exec(selectedMonth);
+    if (!match) {
+      throw new Error('invalid revenue month');
+    }
+
+    const year = Number(match[1]);
+    const yearText = String(year);
+    const yearStart = new Date(`${yearText}-01-01T00:00:00+08:00`);
+    const nextYearStart = new Date(`${year + 1}-01-01T00:00:00+08:00`);
+
+    const [orders, recharges] = await Promise.all([
+      this.prisma.consumptionOrder.findMany({
+        where: { orderDate: { startsWith: `${yearText}-` } },
+        select: { orderDate: true, originalPrice: true, finalPrice: true },
+      }),
+      this.prisma.rechargeOrder.findMany({
+        where: {
+          status: RECHARGE_STATUS.APPROVED,
+          createdAt: { gte: yearStart, lt: nextYearStart },
+        },
+        select: { amount: true, createdAt: true },
+      }),
+    ]);
+
+    return buildRevenueOverview(
+      selectedMonth,
+      orders,
+      recharges.map((recharge) => ({
+        date: this.chinaDateString(recharge.createdAt),
+        amount: recharge.amount,
+      })),
+    );
   }
 
   async createConsumptionOrder(
@@ -655,28 +918,383 @@ export class DataStoreService {
     return { success: true };
   }
 
-  async listAppointments(userId?: string): Promise<Appointment[]> {
+  async listProductCategories(businessType: BusinessType): Promise<ProductCategory[]> {
+    await this.ensureBootstrapData();
+    const delegate = this.categoryDelegate(businessType);
+    const items = await delegate.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+    return items.map((item: DbProductCategory) => this.toProductCategory(businessType, item));
+  }
+
+  async createProductCategory(
+    businessType: BusinessType,
+    payload: CreateProductCategoryRequest,
+  ): Promise<{ category?: ProductCategory; reason?: string }> {
+    const name = payload.name.trim();
+    if (!name) {
+      return { reason: 'category name is required' };
+    }
+
+    const delegate = this.categoryDelegate(businessType);
+    const duplicated = await delegate.findUnique({ where: { name } });
+    if (duplicated) {
+      return { reason: 'category already exists' };
+    }
+
+    const category = await delegate.create({
+      data: {
+        id: `${this.businessPrefix(businessType)}cat-${uuid()}`,
+        name,
+        sortOrder: payload.sortOrder ?? 100,
+        createdAt: new Date(),
+      },
+    });
+
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_category.create',
+      targetType: `${businessType.toLowerCase()}_category`,
+      targetId: category.id,
+      metadata: { businessType, name: category.name },
+    });
+
+    return { category: this.toProductCategory(businessType, category) };
+  }
+
+  async updateProductCategory(
+    businessType: BusinessType,
+    id: string,
+    payload: UpdateProductCategoryRequest,
+  ): Promise<{ category?: ProductCategory; reason?: string }> {
+    const delegate = this.categoryDelegate(businessType);
+    const existing = await delegate.findUnique({ where: { id } });
+    if (!existing) {
+      return { reason: 'category not found' };
+    }
+
+    const nextName = payload.name?.trim();
+    if (payload.name !== undefined && !nextName) {
+      return { reason: 'category name is required' };
+    }
+    if (nextName) {
+      const duplicated = await delegate.findUnique({ where: { name: nextName } });
+      if (duplicated && duplicated.id !== id) {
+        return { reason: 'category already exists' };
+      }
+    }
+
+    const updated = await delegate.update({
+      where: { id },
+      data: {
+        ...(nextName !== undefined ? { name: nextName } : {}),
+        ...(payload.sortOrder !== undefined ? { sortOrder: payload.sortOrder } : {}),
+      },
+    });
+
+    if (nextName && nextName !== existing.name) {
+      await this.productDelegate(businessType).updateMany({
+        where: { categoryId: id },
+        data: { categoryName: nextName },
+      });
+    }
+
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_category.update',
+      targetType: `${businessType.toLowerCase()}_category`,
+      targetId: id,
+      metadata: { businessType, name: updated.name },
+    });
+
+    return { category: this.toProductCategory(businessType, updated) };
+  }
+
+  async deleteProductCategory(businessType: BusinessType, id: string): Promise<{ success: boolean; reason?: string }> {
+    const delegate = this.categoryDelegate(businessType);
+    const existing = await delegate.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, reason: 'category not found' };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.productDelegate(businessType, tx).updateMany({
+        where: { categoryId: id },
+        data: { categoryId: null, categoryName: null },
+      });
+      await this.categoryDelegate(businessType, tx).delete({ where: { id } });
+    });
+
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_category.delete',
+      targetType: `${businessType.toLowerCase()}_category`,
+      targetId: id,
+      metadata: { businessType, name: existing.name },
+    });
+
+    return { success: true };
+  }
+
+  async listCatalogProducts(
+    businessType: BusinessType,
+    options: { includeInactive?: boolean; userId?: string; categoryId?: string } = {},
+  ): Promise<CatalogProduct[]> {
+    await this.ensureBootstrapData();
+    const where: Record<string, unknown> = {};
+    if (!options.includeInactive) {
+      where.isActive = true;
+    }
+    if (options.categoryId) {
+      where.categoryId = options.categoryId;
+    }
+    const products = await this.productDelegate(businessType).findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+    });
+    return products.map((item: DbCatalogProduct) => this.toCatalogProduct(businessType, item));
+  }
+
+  async createCatalogProduct(
+    businessType: BusinessType,
+    payload: CreateCatalogProductRequest,
+  ): Promise<{ product?: CatalogProduct; reason?: string }> {
+    const prepared = await this.prepareCatalogProductInput(businessType, payload);
+    if (prepared.reason) {
+      return { reason: prepared.reason };
+    }
+
+    const now = new Date();
+    const product = await this.productDelegate(businessType).create({
+      data: {
+        id: `${this.businessPrefix(businessType)}prod-${uuid()}`,
+        ...prepared.data,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_product.create',
+      targetType: `${businessType.toLowerCase()}_product`,
+      targetId: product.id,
+      metadata: { businessType, name: product.name },
+    });
+
+    return { product: this.toCatalogProduct(businessType, product) };
+  }
+
+  async updateCatalogProduct(
+    businessType: BusinessType,
+    id: string,
+    payload: UpdateCatalogProductRequest,
+  ): Promise<{ product?: CatalogProduct; reason?: string }> {
+    const delegate = this.productDelegate(businessType);
+    const existing = await delegate.findUnique({ where: { id } });
+    if (!existing) {
+      return { reason: 'product not found' };
+    }
+
+    const prepared = await this.prepareCatalogProductInput(businessType, payload, true);
+    if (prepared.reason) {
+      return { reason: prepared.reason };
+    }
+
+    const updated = await delegate.update({
+      where: { id },
+      data: {
+        ...prepared.data,
+        updatedAt: new Date(),
+      },
+    });
+
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_product.update',
+      targetType: `${businessType.toLowerCase()}_product`,
+      targetId: updated.id,
+      metadata: { businessType, name: updated.name },
+    });
+
+    return { product: this.toCatalogProduct(businessType, updated) };
+  }
+
+  async deleteCatalogProduct(businessType: BusinessType, id: string): Promise<{ success: boolean; reason?: string }> {
+    const delegate = this.productDelegate(businessType);
+    const existing = await delegate.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, reason: 'product not found' };
+    }
+
+    await delegate.delete({ where: { id } });
+    await this.writeAudit({
+      actorId: 'admin-001',
+      actorRole: 'ADMIN',
+      action: 'catalog_product.delete',
+      targetType: `${businessType.toLowerCase()}_product`,
+      targetId: id,
+      metadata: { businessType, name: existing.name },
+    });
+
+    return { success: true };
+  }
+
+  async listAppointments(userId?: string, businessType?: BusinessType): Promise<Appointment[]> {
     const appointments = await this.prisma.appointment.findMany({
-      where: userId ? { userId } : undefined,
+      where: {
+        ...(userId ? { userId } : {}),
+        ...(businessType ? { businessType } : {}),
+      },
       orderBy: [{ appointmentDate: 'asc' }, { startTime: 'asc' }, { createdAt: 'desc' }],
     });
-    return appointments.map((item) => this.toAppointment(item));
+    return this.toAppointmentsWithProductImages(appointments);
+  }
+
+  async listAppointmentUnavailableDates(options: {
+    businessType?: BusinessType;
+    fromDate?: string;
+    toDate?: string;
+  } = {}): Promise<AppointmentUnavailableDate[]> {
+    const fromDate = options.fromDate || this.chinaDateString(new Date());
+    const rows = await this.prisma.appointmentUnavailableDate.findMany({
+      where: {
+        ...(options.businessType
+          ? { businessType: { in: ['ALL', options.businessType] } }
+          : {}),
+        appointmentDate: {
+          gte: fromDate,
+          ...(options.toDate ? { lte: options.toDate } : {}),
+        },
+      },
+      orderBy: [{ appointmentDate: 'asc' }, { businessType: 'asc' }],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      appointmentDate: row.appointmentDate,
+      businessType: row.businessType as AppointmentAvailabilityScope,
+      reason: row.reason || undefined,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+  }
+
+  async createAppointmentUnavailableDate(
+    adminId: string,
+    payload: CreateAppointmentUnavailableDateRequest,
+  ): Promise<{ unavailableDate?: AppointmentUnavailableDate; reason?: string }> {
+    if (!this.isValidDateOnly(payload.appointmentDate)) {
+      return { reason: 'invalid appointment date' };
+    }
+    if (!this.isAppointmentAvailabilityScope(payload.businessType)) {
+      return { reason: 'invalid appointment availability scope' };
+    }
+    if (payload.appointmentDate < this.chinaDateString(new Date())) {
+      return { reason: 'appointment unavailable date cannot be in the past' };
+    }
+
+    const existing = await this.prisma.appointmentUnavailableDate.findFirst({
+      where: {
+        appointmentDate: payload.appointmentDate,
+        ...(payload.businessType === 'ALL'
+          ? {}
+          : { businessType: { in: ['ALL', payload.businessType] } }),
+      },
+    });
+    if (existing) {
+      return { reason: 'appointment date has unavailable settings' };
+    }
+
+    const now = new Date();
+    const created = await this.prisma.appointmentUnavailableDate.create({
+      data: {
+        id: `aud-${uuid()}`,
+        appointmentDate: payload.appointmentDate,
+        businessType: payload.businessType,
+        reason: payload.reason?.trim() || null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    await this.writeAudit({
+      actorId: adminId,
+      actorRole: 'ADMIN',
+      action: 'appointment_unavailable_date.create',
+      targetType: 'appointment_unavailable_date',
+      targetId: created.id,
+      metadata: {
+        appointmentDate: created.appointmentDate,
+        businessType: created.businessType,
+        reason: created.reason,
+      },
+    });
+
+    return {
+      unavailableDate: {
+        id: created.id,
+        appointmentDate: created.appointmentDate,
+        businessType: created.businessType as AppointmentAvailabilityScope,
+        reason: created.reason || undefined,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+      },
+    };
+  }
+
+  async deleteAppointmentUnavailableDate(
+    id: string,
+    adminId: string,
+  ): Promise<{ success: boolean; reason?: string }> {
+    const existing = await this.prisma.appointmentUnavailableDate.findUnique({ where: { id } });
+    if (!existing) {
+      return { success: false, reason: 'appointment unavailable date not found' };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.appointmentUnavailableDate.delete({ where: { id } });
+      await this.writeAudit(
+        {
+          actorId: adminId,
+          actorRole: 'ADMIN',
+          action: 'appointment_unavailable_date.delete',
+          targetType: 'appointment_unavailable_date',
+          targetId: id,
+          metadata: {
+            appointmentDate: existing.appointmentDate,
+            businessType: existing.businessType,
+            reason: existing.reason,
+          },
+        },
+        tx,
+      );
+    });
+
+    return { success: true };
   }
 
   async listBookedAppointmentSlots(
     appointmentDate: string,
-    excludeUserId?: string,
+    _excludeUserId?: string,
+    businessType: BusinessType = BUSINESS_TYPE.NAIL,
   ): Promise<BookedAppointmentSlot[]> {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         appointmentDate,
+        businessType,
         status: APPOINTMENT_STATUS.CONFIRMED,
-        ...(excludeUserId ? { NOT: { userId: excludeUserId } } : {}),
       },
       orderBy: { startTime: 'asc' },
     });
 
     return appointments.map((item) => ({
+      businessType: item.businessType as BusinessType,
       appointmentDate: item.appointmentDate,
       startTime: item.startTime,
       endTime: item.endTime,
@@ -692,25 +1310,37 @@ export class DataStoreService {
       return { reason: 'member not found' };
     }
 
+    const businessType = payload.businessType || BUSINESS_TYPE.NAIL;
+    if (!this.isBusinessType(businessType)) {
+      return { reason: 'invalid business type' };
+    }
+    if (!this.isValidDateOnly(payload.appointmentDate)) {
+      return { reason: 'invalid appointment date' };
+    }
+
+    const productResult = await this.resolveAppointmentProduct(businessType, payload.productId, userId);
+    if (productResult.reason) {
+      return { reason: productResult.reason };
+    }
+
     if (!this.isAllowedAppointmentTime(payload.startTime) || (payload.endTime && !this.isAllowedAppointmentTime(payload.endTime))) {
       return { reason: 'appointment time must be between 09:00 and 21:00' };
     }
 
     const endTime = payload.endTime || payload.startTime;
+    if (this.isPastAppointmentTime(payload.appointmentDate, payload.startTime)) {
+      return { reason: 'appointment time cannot be in the past' };
+    }
+
+    if (await this.isAppointmentDateUnavailable(payload.appointmentDate, businessType)) {
+      return { reason: 'appointment date unavailable' };
+    }
+
     if (endTime !== payload.startTime && this.timeToMinutes(endTime) <= this.timeToMinutes(payload.startTime)) {
       return { reason: 'appointment end time must be later than start time' };
     }
 
-    const occupiedAppointment = await this.prisma.appointment.findFirst({
-      where: {
-        appointmentDate: payload.appointmentDate,
-        startTime: payload.startTime,
-        endTime,
-        status: APPOINTMENT_STATUS.CONFIRMED,
-        NOT: { userId },
-      },
-    });
-    if (occupiedAppointment) {
+    if (await this.hasConfirmedAppointmentConflict(businessType, payload.appointmentDate, payload.startTime, endTime)) {
       return { reason: 'appointment time slot already booked' };
     }
 
@@ -719,6 +1349,9 @@ export class DataStoreService {
         id: `ap-${uuid()}`,
         userId,
         memberNickname: member.nickname,
+        businessType,
+        productId: productResult.product?.id || null,
+        productName: productResult.product?.name || null,
         appointmentDate: payload.appointmentDate,
         startTime: payload.startTime,
         endTime,
@@ -738,12 +1371,15 @@ export class DataStoreService {
       targetId: appointment.id,
       metadata: {
         appointmentDate: appointment.appointmentDate,
+        businessType: appointment.businessType,
+        productId: appointment.productId,
+        productName: appointment.productName,
         startTime: appointment.startTime,
         endTime: appointment.endTime,
       },
     });
 
-    return { appointment: this.toAppointment(appointment) };
+    return { appointment: this.toAppointment(appointment, productResult.product?.images) };
   }
 
   async createAdminAppointment(
@@ -755,11 +1391,28 @@ export class DataStoreService {
       return { reason: 'member not found' };
     }
 
+    const businessType = payload.businessType || BUSINESS_TYPE.NAIL;
+    if (!this.isBusinessType(businessType)) {
+      return { reason: 'invalid business type' };
+    }
+    if (!this.isValidDateOnly(payload.appointmentDate)) {
+      return { reason: 'invalid appointment date' };
+    }
+
+    const productResult = await this.resolveAppointmentProduct(businessType, payload.productId, payload.userId);
+    if (productResult.reason) {
+      return { reason: productResult.reason };
+    }
+
     if (!this.isAllowedAppointmentTime(payload.startTime) || (payload.endTime && !this.isAllowedAppointmentTime(payload.endTime))) {
       return { reason: 'appointment time must be between 09:00 and 21:00' };
     }
 
     const endTime = payload.endTime || payload.startTime;
+    if (this.isPastAppointmentTime(payload.appointmentDate, payload.startTime)) {
+      return { reason: 'appointment time cannot be in the past' };
+    }
+
     if (endTime !== payload.startTime && this.timeToMinutes(endTime) <= this.timeToMinutes(payload.startTime)) {
       return { reason: 'appointment end time must be later than start time' };
     }
@@ -771,16 +1424,7 @@ export class DataStoreService {
     }
 
     if (status === APPOINTMENT_STATUS.CONFIRMED) {
-      const occupiedAppointment = await this.prisma.appointment.findFirst({
-        where: {
-          appointmentDate: payload.appointmentDate,
-          startTime: payload.startTime,
-          endTime,
-          status: APPOINTMENT_STATUS.CONFIRMED,
-          NOT: { userId: payload.userId },
-        },
-      });
-      if (occupiedAppointment) {
+      if (await this.hasConfirmedAppointmentConflict(businessType, payload.appointmentDate, payload.startTime, endTime)) {
         return { reason: 'appointment time slot already booked' };
       }
     }
@@ -790,6 +1434,9 @@ export class DataStoreService {
         id: `ap-${uuid()}`,
         userId: payload.userId,
         memberNickname: member.nickname,
+        businessType,
+        productId: productResult.product?.id || null,
+        productName: productResult.product?.name || null,
         appointmentDate: payload.appointmentDate,
         startTime: payload.startTime,
         endTime,
@@ -809,6 +1456,9 @@ export class DataStoreService {
       targetId: appointment.id,
       metadata: {
         userId: appointment.userId,
+        businessType: appointment.businessType,
+        productId: appointment.productId,
+        productName: appointment.productName,
         appointmentDate: appointment.appointmentDate,
         startTime: appointment.startTime,
         endTime: appointment.endTime,
@@ -816,7 +1466,11 @@ export class DataStoreService {
       },
     });
 
-    return { appointment: this.toAppointment(appointment) };
+    if (businessType === BUSINESS_TYPE.ACCESSORY && status === APPOINTMENT_STATUS.CONFIRMED && appointment.productId) {
+      await this.deactivateAccessoryAfterAcceptance(appointment.productId);
+    }
+
+    return { appointment: this.toAppointment(appointment, productResult.product?.images) };
   }
 
   async updateAppointment(
@@ -831,19 +1485,44 @@ export class DataStoreService {
     const nextAdminRemark = payload.adminRemark?.trim();
     const nextStatus = payload.status || (existing.status as AppointmentStatus);
     const nextUserId = payload.userId?.trim() || existing.userId;
+    const nextBusinessType = payload.businessType || (existing.businessType as BusinessType);
     const nextAppointmentDate = payload.appointmentDate || existing.appointmentDate;
     const nextStartTime = payload.startTime || existing.startTime;
     const nextEndTime = payload.endTime || (payload.startTime ? payload.startTime : existing.endTime);
+
+    if (!this.isBusinessType(nextBusinessType)) {
+      return { reason: 'invalid business type' };
+    }
+    if (!this.isValidDateOnly(nextAppointmentDate)) {
+      return { reason: 'invalid appointment date' };
+    }
 
     if (payload.userId && payload.userId !== existing.userId) {
       const member = await this.prisma.member.findUnique({ where: { id: payload.userId } });
       if (!member) {
         return { reason: 'member not found' };
       }
+
+    }
+
+    const shouldResolveProduct = payload.productId !== undefined || payload.businessType !== undefined || payload.userId !== undefined;
+    const productResult = shouldResolveProduct
+      ? await this.resolveAppointmentProduct(nextBusinessType, payload.productId === undefined ? existing.productId : payload.productId, nextUserId)
+      : { product: existing.productId ? { id: existing.productId, name: existing.productName || '', images: [] } : undefined };
+    if ('reason' in productResult && productResult.reason) {
+      return { reason: productResult.reason };
     }
 
     if (!this.isAllowedAppointmentTime(nextStartTime) || !this.isAllowedAppointmentTime(nextEndTime)) {
       return { reason: 'appointment time must be between 09:00 and 21:00' };
+    }
+    if (
+      (payload.appointmentDate !== undefined ||
+        payload.startTime !== undefined ||
+        (payload.status === APPOINTMENT_STATUS.CONFIRMED && existing.status !== APPOINTMENT_STATUS.CONFIRMED)) &&
+      this.isPastAppointmentTime(nextAppointmentDate, nextStartTime)
+    ) {
+      return { reason: 'appointment time cannot be in the past' };
     }
     if (nextEndTime !== nextStartTime && this.timeToMinutes(nextEndTime) <= this.timeToMinutes(nextStartTime)) {
       return { reason: 'appointment end time must be later than start time' };
@@ -857,17 +1536,31 @@ export class DataStoreService {
       return { reason: 'only confirmed appointment can be completed' };
     }
 
+    if (
+      nextBusinessType === BUSINESS_TYPE.ACCESSORY &&
+      nextStatus === APPOINTMENT_STATUS.CONFIRMED &&
+      existing.status !== APPOINTMENT_STATUS.CONFIRMED
+    ) {
+      const accessoryProductId = productResult.product?.id || existing.productId;
+      if (!accessoryProductId) {
+        return { reason: 'accessory appointment requires a product' };
+      }
+      const accessoryProduct = await this.prisma.accessoryProduct.findUnique({ where: { id: accessoryProductId } });
+      if (!accessoryProduct?.isActive) {
+        return { reason: 'product is not available' };
+      }
+    }
+
     if (nextStatus === APPOINTMENT_STATUS.CONFIRMED) {
-      const occupiedAppointment = await this.prisma.appointment.findFirst({
-        where: {
-          appointmentDate: nextAppointmentDate,
-          startTime: nextStartTime,
-          endTime: nextEndTime,
-          status: APPOINTMENT_STATUS.CONFIRMED,
-          NOT: { id: existing.id },
-        },
-      });
-      if (occupiedAppointment) {
+      if (
+        await this.hasConfirmedAppointmentConflict(
+          nextBusinessType,
+          nextAppointmentDate,
+          nextStartTime,
+          nextEndTime,
+          existing.id,
+        )
+      ) {
         return { reason: 'appointment time slot already booked' };
       }
     }
@@ -879,6 +1572,13 @@ export class DataStoreService {
           ? {
               userId: nextUserId,
               memberNickname: (await this.prisma.member.findUnique({ where: { id: nextUserId } }))?.nickname || existing.memberNickname,
+            }
+          : {}),
+        ...(payload.businessType !== undefined ? { businessType: nextBusinessType } : {}),
+        ...(shouldResolveProduct
+          ? {
+              productId: productResult.product?.id || null,
+              productName: productResult.product?.name || null,
             }
           : {}),
         ...(payload.appointmentDate !== undefined ? { appointmentDate: nextAppointmentDate } : {}),
@@ -899,6 +1599,9 @@ export class DataStoreService {
       targetId: id,
       metadata: {
         userId: updated.userId,
+        businessType: updated.businessType,
+        productId: updated.productId,
+        productName: updated.productName,
         appointmentDate: updated.appointmentDate,
         startTime: updated.startTime,
         endTime: updated.endTime,
@@ -907,7 +1610,44 @@ export class DataStoreService {
       },
     });
 
-    return { appointment: this.toAppointment(updated) };
+    if (updated.businessType === BUSINESS_TYPE.ACCESSORY && updated.status === APPOINTMENT_STATUS.CONFIRMED && updated.productId) {
+      await this.deactivateAccessoryAfterAcceptance(updated.productId);
+    }
+
+    return { appointment: (await this.toAppointmentsWithProductImages([updated]))[0] };
+  }
+
+  async deleteAppointment(id: string, adminId: string): Promise<{ success: boolean; reason?: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.findUnique({ where: { id } });
+      if (!appointment) {
+        return { success: false, reason: 'appointment not found' };
+      }
+
+      await tx.appointment.delete({ where: { id } });
+      await this.writeAudit(
+        {
+          actorId: adminId,
+          actorRole: 'ADMIN',
+          action: 'appointment.delete',
+          targetType: 'appointment',
+          targetId: id,
+          metadata: {
+            userId: appointment.userId,
+            memberNickname: appointment.memberNickname,
+            businessType: appointment.businessType,
+            productId: appointment.productId,
+            productName: appointment.productName,
+            appointmentDate: appointment.appointmentDate,
+            startTime: appointment.startTime,
+            status: appointment.status,
+          },
+        },
+        tx,
+      );
+
+      return { success: true };
+    });
   }
 
   async listLevels(): Promise<MemberLevel[]> {
@@ -1025,6 +1765,10 @@ export class DataStoreService {
         return { reason: 'member not found' };
       }
 
+      if (payload.birthday !== undefined && !this.isValidBirthdayMonthDay(payload.birthday)) {
+        return { reason: 'birthday must use valid MM-DD format' };
+      }
+
       const before = this.memberSnapshot(member);
       let nextLevel: MemberLevel | undefined;
       if (payload.levelId !== undefined) {
@@ -1035,23 +1779,9 @@ export class DataStoreService {
         nextLevel = this.toMemberLevel(level);
       }
 
-      const nextMemberId = payload.id?.trim() || member.id;
-      if (nextMemberId !== member.id) {
-        const duplicated = await tx.member.findUnique({ where: { id: nextMemberId } });
-        if (duplicated) {
-          return { reason: 'member id already exists' };
-        }
-
-        await tx.rechargeOrder.updateMany({ where: { userId: member.id }, data: { userId: nextMemberId } });
-        await tx.consumptionOrder.updateMany({ where: { userId: member.id }, data: { userId: nextMemberId } });
-        await tx.appointment.updateMany({ where: { userId: member.id }, data: { userId: nextMemberId } });
-        await tx.balanceLedger.updateMany({ where: { userId: member.id }, data: { userId: nextMemberId } });
-      }
-
       const updated = await tx.member.update({
         where: { id: member.id },
         data: {
-          id: nextMemberId,
           ...(payload.nickname !== undefined ? { nickname: payload.nickname } : {}),
           ...(payload.remark !== undefined ? { remark: payload.remark.trim() || null } : {}),
           ...(payload.birthday !== undefined ? { birthday: payload.birthday } : {}),
@@ -1084,7 +1814,6 @@ export class DataStoreService {
           targetType: 'member',
           targetId: updated.id,
           metadata: {
-            originMemberId: memberId,
             changes: this.diffSnapshot(before, after),
           },
         },
@@ -1109,33 +1838,40 @@ export class DataStoreService {
         id: member.id,
         phone: member.phone || undefined,
         birthday: member.birthday || undefined,
+        nickname: member.nickname,
       };
 
+      const nextBirthday = payload.birthday?.trim();
+      if (nextBirthday && !this.isValidBirthdayMonthDay(nextBirthday)) {
+        return { reason: 'birthday must use valid MM-DD format' };
+      }
+      if (nextBirthday && member.birthday && nextBirthday !== member.birthday) {
+        return { reason: 'birthday can only be changed once' };
+      }
+
       const phone = payload.phone?.trim();
+      const nickname = payload.nickname?.trim();
+      if (payload.nickname !== undefined && !nickname) {
+        return { reason: 'nickname is required' };
+      }
       if (phone) {
         const duplicated = await tx.member.findFirst({
           where: {
-            OR: [{ id: phone }, { phone }],
+            phone,
             NOT: { id: member.id },
           },
         });
         if (duplicated) {
           return { reason: 'phone already bound by another member' };
         }
-
-        if (phone !== member.id) {
-          await tx.rechargeOrder.updateMany({ where: { userId: member.id }, data: { userId: phone } });
-          await tx.consumptionOrder.updateMany({ where: { userId: member.id }, data: { userId: phone } });
-          await tx.appointment.updateMany({ where: { userId: member.id }, data: { userId: phone } });
-          await tx.balanceLedger.updateMany({ where: { userId: member.id }, data: { userId: phone } });
-        }
       }
 
       const updated = await tx.member.update({
         where: { id: member.id },
         data: {
-          ...(phone ? { id: phone, phone } : {}),
-          ...(payload.birthday !== undefined ? { birthday: payload.birthday } : {}),
+          ...(phone ? { phone } : {}),
+          ...(nextBirthday ? { birthday: nextBirthday } : {}),
+          ...(nickname ? { nickname } : {}),
         },
       });
 
@@ -1143,6 +1879,7 @@ export class DataStoreService {
         id: updated.id,
         phone: updated.phone || undefined,
         birthday: updated.birthday || undefined,
+        nickname: updated.nickname,
       };
 
       await this.writeAudit(
@@ -1164,18 +1901,71 @@ export class DataStoreService {
     });
   }
 
+  async updateMemberAvatar(
+    memberId: string,
+    avatarUrl: string,
+  ): Promise<{ member?: MemberProfile; reason?: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.member.findUnique({ where: { id: memberId } });
+      if (!member) {
+        return { reason: 'member not found' };
+      }
+
+      const updated = await tx.member.update({
+        where: { id: memberId },
+        data: { avatarUrl },
+      });
+
+      await this.writeAudit(
+        {
+          actorId: memberId,
+          actorRole: 'MEMBER',
+          action: 'member.avatar.update',
+          targetType: 'member',
+          targetId: memberId,
+          metadata: {
+            changes: this.diffSnapshot(
+              { avatarUrl: member.avatarUrl },
+              { avatarUrl: updated.avatarUrl },
+            ),
+          },
+        },
+        tx,
+      );
+
+      return { member: this.toMemberProfile(updated) };
+    });
+  }
+
   async listAuditLogs(): Promise<AuditLog[]> {
     const logs = await this.prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' } });
     return logs.map((log) => this.toAuditLog(log));
   }
 
   private async ensureBootstrapData(): Promise<void> {
-    const [levelCount, adminCount, productTypeCount] = await Promise.all([
+    const [
+      levelCount,
+      adminCount,
+      productTypeCount,
+      nailCategoryCount,
+      accessoryCategoryCount,
+      flowerCategoryCount,
+      nailProductCount,
+      accessoryProductCount,
+      flowerProductCount,
+    ] = await Promise.all([
       this.prisma.memberLevel.count(),
       this.prisma.adminUser.count(),
       this.prisma.productType.count(),
+      this.prisma.nailCategory.count(),
+      this.prisma.accessoryCategory.count(),
+      this.prisma.flowerCategory.count(),
+      this.prisma.nailProduct.count(),
+      this.prisma.accessoryProduct.count(),
+      this.prisma.flowerProduct.count(),
     ]);
     const seed = createDefaultStore();
+    const shouldSeedDemoCatalog = process.env.NODE_ENV !== 'production' && process.env.SEED_DEMO_CATALOG !== 'false';
 
     if (levelCount === 0) {
       await this.prisma.memberLevel.createMany({ data: seed.memberLevels });
@@ -1188,6 +1978,54 @@ export class DataStoreService {
     if (productTypeCount === 0) {
       await this.prisma.productType.createMany({
         data: seed.productTypes.map((item) => this.productTypeToDb(item)),
+      });
+    }
+
+    if (nailCategoryCount === 0) {
+      await this.prisma.nailCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.NAIL)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+    }
+
+    if (accessoryCategoryCount === 0) {
+      await this.prisma.accessoryCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.ACCESSORY)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+    }
+
+    if (flowerCategoryCount === 0) {
+      await this.prisma.flowerCategory.createMany({
+        data: seed.productCategories
+          .filter((item) => item.businessType === BUSINESS_TYPE.FLOWER)
+          .map((item) => this.productCategoryToDb(item)),
+      });
+    }
+
+    if (shouldSeedDemoCatalog && nailProductCount === 0) {
+      await this.prisma.nailProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.NAIL)
+          .map((item) => this.catalogProductToDb(item)),
+      });
+    }
+
+    if (shouldSeedDemoCatalog && accessoryProductCount === 0) {
+      await this.prisma.accessoryProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.ACCESSORY)
+          .map((item) => this.catalogProductToDb(item)),
+      });
+    }
+
+    if (shouldSeedDemoCatalog && flowerProductCount === 0) {
+      await this.prisma.flowerProduct.createMany({
+        data: seed.catalogProducts
+          .filter((item) => item.businessType === BUSINESS_TYPE.FLOWER)
+          .map((item) => this.catalogProductToDb(item)),
       });
     }
   }
@@ -1207,6 +2045,41 @@ export class DataStoreService {
 
   private compactDate(dateString: string): string {
     return dateString.replace(/-/g, '');
+  }
+
+  private localDateString(date = new Date()): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private chinaDateString(date: Date): string {
+    return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  private isValidDateOnly(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }
+
+  private isAppointmentAvailabilityScope(value: string): value is AppointmentAvailabilityScope {
+    return value === 'ALL' || this.isBusinessType(value);
+  }
+
+  private async isAppointmentDateUnavailable(
+    appointmentDate: string,
+    businessType: BusinessType,
+  ): Promise<boolean> {
+    const unavailableDate = await this.prisma.appointmentUnavailableDate.findFirst({
+      where: {
+        appointmentDate,
+        businessType: { in: ['ALL', businessType] },
+      },
+      select: { id: true },
+    });
+    return Boolean(unavailableDate);
   }
 
   private createDailyCode(prefix: string, dateString: string, existingCodes: string[]): string {
@@ -1232,6 +2105,189 @@ export class DataStoreService {
   private isAllowedAppointmentTime(time: string): boolean {
     const minutes = this.timeToMinutes(time);
     return minutes >= 9 * 60 && minutes <= 21 * 60;
+  }
+
+  private isPastAppointmentTime(appointmentDate: string, startTime: string): boolean {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(appointmentDate);
+    if (!match) return true;
+
+    const [hour, minute] = startTime.split(':').map((part) => Number(part));
+    const appointmentAt = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      hour,
+      minute,
+      0,
+      0,
+    );
+    return appointmentAt.getTime() <= Date.now();
+  }
+
+  private isValidBirthdayMonthDay(value: string): boolean {
+    const match = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(value);
+    if (!match) return false;
+
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const maxDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day <= maxDays[month - 1];
+  }
+
+  private async hasConfirmedAppointmentConflict(
+    businessType: BusinessType,
+    appointmentDate: string,
+    startTime: string,
+    endTime: string,
+    excludeAppointmentId?: string,
+  ): Promise<boolean> {
+    const confirmed = await this.prisma.appointment.findMany({
+      where: {
+        businessType,
+        appointmentDate,
+        status: APPOINTMENT_STATUS.CONFIRMED,
+        ...(excludeAppointmentId ? { NOT: { id: excludeAppointmentId } } : {}),
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    const targetStart = this.timeToMinutes(startTime);
+    const targetEnd = this.appointmentEndMinutes(startTime, endTime);
+    return confirmed.some((item) => {
+      const occupiedStart = this.timeToMinutes(item.startTime);
+      const occupiedEnd = this.appointmentEndMinutes(item.startTime, item.endTime);
+      return targetStart < occupiedEnd && targetEnd > occupiedStart;
+    });
+  }
+
+  private appointmentEndMinutes(startTime: string, endTime: string): number {
+    const start = this.timeToMinutes(startTime);
+    const end = this.timeToMinutes(endTime);
+    return end > start ? end : start + 30;
+  }
+
+  private isBusinessType(value: string): value is BusinessType {
+    return Object.values(BUSINESS_TYPE).includes(value as BusinessType);
+  }
+
+  private businessPrefix(businessType: BusinessType): string {
+    const map: Record<BusinessType, string> = {
+      [BUSINESS_TYPE.NAIL]: 'nail-',
+      [BUSINESS_TYPE.ACCESSORY]: 'accessory-',
+      [BUSINESS_TYPE.FLOWER]: 'flower-',
+    };
+    return map[businessType];
+  }
+
+  private categoryDelegate(businessType: BusinessType, client: any = this.prisma): any {
+    const map: Record<BusinessType, any> = {
+      [BUSINESS_TYPE.NAIL]: client.nailCategory,
+      [BUSINESS_TYPE.ACCESSORY]: client.accessoryCategory,
+      [BUSINESS_TYPE.FLOWER]: client.flowerCategory,
+    };
+    return map[businessType];
+  }
+
+  private productDelegate(businessType: BusinessType, client: any = this.prisma): any {
+    const map: Record<BusinessType, any> = {
+      [BUSINESS_TYPE.NAIL]: client.nailProduct,
+      [BUSINESS_TYPE.ACCESSORY]: client.accessoryProduct,
+      [BUSINESS_TYPE.FLOWER]: client.flowerProduct,
+    };
+    return map[businessType];
+  }
+
+  private async prepareCatalogProductInput(
+    businessType: BusinessType,
+    payload: CreateCatalogProductRequest | UpdateCatalogProductRequest,
+    partial = false,
+  ): Promise<{ data?: Record<string, unknown>; reason?: string }> {
+    const data: Record<string, unknown> = {};
+    const name = payload.name?.trim();
+    if (!partial || payload.name !== undefined) {
+      if (!name) return { reason: 'product name is required' };
+      data.name = name;
+    }
+
+    if (payload.categoryId !== undefined) {
+      const categoryId = payload.categoryId || null;
+      if (categoryId) {
+        const category = await this.categoryDelegate(businessType).findUnique({ where: { id: categoryId } });
+        if (!category) {
+          return { reason: 'category not found' };
+        }
+        data.categoryId = category.id;
+        data.categoryName = category.name;
+      } else {
+        data.categoryId = null;
+        data.categoryName = null;
+      }
+    }
+
+    if (payload.description !== undefined) {
+      data.description = payload.description?.trim() || null;
+    }
+    if (payload.referencePrice !== undefined) {
+      const price = payload.referencePrice;
+      if (price !== null && price < 0) {
+        return { reason: 'reference price must be greater than or equal to 0' };
+      }
+      data.referencePrice = price === null ? null : this.round2(price);
+    }
+    if (payload.images !== undefined) {
+      data.images = payload.images.filter((url) => url && url.trim()).slice(0, 9);
+    } else if (!partial) {
+      data.images = [];
+    }
+    if (payload.sortOrder !== undefined) {
+      data.sortOrder = payload.sortOrder;
+    } else if (!partial) {
+      data.sortOrder = 100;
+    }
+    if (payload.isActive !== undefined) {
+      data.isActive = payload.isActive;
+    } else if (!partial) {
+      data.isActive = true;
+    }
+
+    return { data };
+  }
+
+  private async resolveAppointmentProduct(
+    businessType: BusinessType,
+    productId: string | null | undefined,
+    userId: string,
+  ): Promise<{ product?: { id: string; name: string; images: string[] }; reason?: string }> {
+    if (!productId) {
+      if (businessType === BUSINESS_TYPE.ACCESSORY) {
+        return { reason: 'accessory appointment requires a product' };
+      }
+      return {};
+    }
+
+    const product = (await this.productDelegate(businessType).findUnique({ where: { id: productId } })) as
+      | DbCatalogProduct
+      | null;
+    if (!product) {
+      return { reason: 'product not found' };
+    }
+    if (!product.isActive) {
+      return { reason: 'product is not available' };
+    }
+    return { product: { id: product.id, name: product.name, images: product.images } };
+  }
+
+  private async deactivateAccessoryAfterAcceptance(productId: string): Promise<void> {
+    await this.prisma.accessoryProduct.update({
+      where: { id: productId },
+      data: {
+        isActive: false,
+        reservedByUserId: null,
+        reservedAppointmentId: null,
+        reservedAt: null,
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async writeAudit(entry: Omit<AuditLog, 'id' | 'createdAt'>, client: any = this.prisma): Promise<void> {
@@ -1314,11 +2370,70 @@ export class DataStoreService {
     };
   }
 
-  private toAppointment(item: DbAppointment): Appointment {
+  private toProductCategory(businessType: BusinessType, item: DbProductCategory): ProductCategory {
+    return {
+      id: item.id,
+      businessType,
+      name: item.name,
+      sortOrder: item.sortOrder,
+      createdAt: item.createdAt.toISOString(),
+    };
+  }
+
+  private toCatalogProduct(businessType: BusinessType, item: DbCatalogProduct): CatalogProduct {
+    return {
+      id: item.id,
+      businessType,
+      categoryId: item.categoryId || undefined,
+      categoryName: item.categoryName || undefined,
+      name: item.name,
+      description: item.description || undefined,
+      referencePrice: item.referencePrice ?? undefined,
+      images: item.images,
+      sortOrder: item.sortOrder,
+      isActive: item.isActive,
+      reservedByUserId: item.reservedByUserId || undefined,
+      reservedAppointmentId: item.reservedAppointmentId || undefined,
+      reservedAt: item.reservedAt?.toISOString() || undefined,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+    };
+  }
+
+  private async toAppointmentsWithProductImages(items: DbAppointment[]): Promise<Appointment[]> {
+    const productIdsByBusiness = new Map<BusinessType, Set<string>>();
+    for (const item of items) {
+      if (!item.productId || !this.isBusinessType(item.businessType)) continue;
+      const businessType = item.businessType as BusinessType;
+      productIdsByBusiness.set(businessType, productIdsByBusiness.get(businessType) || new Set<string>());
+      productIdsByBusiness.get(businessType)?.add(item.productId);
+    }
+
+    const imageMap = new Map<string, string[]>();
+    for (const [businessType, productIds] of productIdsByBusiness.entries()) {
+      const products = (await this.productDelegate(businessType).findMany({
+        where: { id: { in: Array.from(productIds) } },
+      })) as DbCatalogProduct[];
+      for (const product of products) {
+        imageMap.set(`${businessType}:${product.id}`, product.images);
+      }
+    }
+
+    return items.map((item) => {
+      const businessType = this.isBusinessType(item.businessType) ? item.businessType : BUSINESS_TYPE.NAIL;
+      return this.toAppointment(item, item.productId ? imageMap.get(`${businessType}:${item.productId}`) : undefined);
+    });
+  }
+
+  private toAppointment(item: DbAppointment, productImages?: string[]): Appointment {
     return {
       id: item.id,
       userId: item.userId,
       memberNickname: item.memberNickname,
+      businessType: this.isBusinessType(item.businessType) ? item.businessType : BUSINESS_TYPE.NAIL,
+      productId: item.productId || undefined,
+      productName: item.productName || undefined,
+      productImages: productImages?.length ? productImages : undefined,
       appointmentDate: item.appointmentDate,
       startTime: item.startTime,
       endTime: item.endTime,
@@ -1353,10 +2468,19 @@ export class DataStoreService {
 
   private memberToDb(member: MemberProfile): DbMember {
     return {
-      ...member,
+      id: member.id,
+      openId: member.openId,
+      nickname: member.nickname,
+      avatarUrl: member.avatarUrl,
+      levelId: member.levelId,
+      levelName: member.levelName,
+      discountRate: member.discountRate,
+      balance: member.balance,
+      points: member.points,
       phone: member.phone || null,
       remark: member.remark || null,
       birthday: member.birthday || null,
+      accountIdChangedAt: null,
     };
   }
 
@@ -1382,6 +2506,42 @@ export class DataStoreService {
     return {
       ...item,
       createdAt: new Date(item.createdAt),
+    };
+  }
+
+  private productCategoryToDb(item: ProductCategory): DbProductCategory {
+    return {
+      id: item.id,
+      name: item.name,
+      sortOrder: item.sortOrder,
+      createdAt: new Date(item.createdAt),
+    };
+  }
+
+  private catalogProductToDb(item: CatalogProduct): DbCatalogProduct {
+    const base = {
+      id: item.id,
+      categoryId: item.categoryId || null,
+      categoryName: item.categoryName || null,
+      name: item.name,
+      description: item.description || null,
+      referencePrice: item.referencePrice ?? null,
+      images: item.images,
+      sortOrder: item.sortOrder,
+      isActive: item.isActive,
+      createdAt: new Date(item.createdAt),
+      updatedAt: new Date(item.updatedAt),
+    };
+
+    if (item.businessType !== BUSINESS_TYPE.ACCESSORY) {
+      return base;
+    }
+
+    return {
+      ...base,
+      reservedByUserId: item.reservedByUserId || null,
+      reservedAppointmentId: item.reservedAppointmentId || null,
+      reservedAt: item.reservedAt ? new Date(item.reservedAt) : null,
     };
   }
 
@@ -1413,6 +2573,24 @@ export class DataStoreService {
       balance: member.balance,
       points: member.points,
     };
+  }
+
+  private async generateMemberNumber(): Promise<string> {
+    const now = new Date();
+    const datePart = [
+      String(now.getFullYear()).slice(-2),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('');
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const randomPart = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+      const memberNumber = `MI${datePart}${randomPart}`;
+      const existing = await this.prisma.member.findUnique({ where: { id: memberNumber } });
+      if (!existing) return memberNumber;
+    }
+
+    return `MI${Date.now()}`;
   }
 
   private diffSnapshot(

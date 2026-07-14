@@ -1,26 +1,9 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
-      <text class="header-title">充值中心</text>
-    </view>
-
-    <view class="card">
-      <text class="section-title">申请充值</text>
-      <view class="amount-grid">
-        <view
-          v-for="item in amountOptions"
-          :key="item"
-          class="amount-option"
-          :class="{ active: amount === item }"
-          @click="amount = item"
-        >
-          ¥{{ item }}
-        </view>
-      </view>
-      <input v-model.number="amount" type="number" placeholder="输入自定义金额" class="input" />
-      <button class="primary-btn" @click="submitRecharge" :disabled="submitting">
-        {{ submitting ? '提交中...' : '提交' }}
-      </button>
+      <text class="header-title">充值记录</text>
+      <text class="header-desc">账户充值由门店后台处理，顾客端仅展示记录。</text>
     </view>
 
     <view class="card">
@@ -43,14 +26,11 @@
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { RechargeOrder } from '@member-platform/shared';
-import { applyRecharge, listMyRecharges } from '@/utils/api';
+import { listMyRecharges } from '@/utils/api';
 import { sessionState } from '@/store/session';
-import { formatMoney, refreshSessionProfile, requireLogin, statusClass, statusText } from '@/utils/member';
+import { formatMoney, refreshSessionProfile, statusClass, statusText } from '@/utils/member';
 
-const amountOptions = [100, 300, 500, 1000];
-const amount = ref(100);
 const records = ref<RechargeOrder[]>([]);
-const submitting = ref(false);
 
 async function refresh() {
   await refreshSessionProfile();
@@ -58,25 +38,6 @@ async function refresh() {
     return;
   }
   records.value = await listMyRecharges();
-}
-
-async function submitRecharge() {
-  if (!requireLogin()) {
-    return;
-  }
-  if (!amount.value || amount.value <= 0) {
-    uni.showToast({ title: '请输入有效金额', icon: 'none' });
-    return;
-  }
-
-  submitting.value = true;
-  try {
-    await applyRecharge({ amount: amount.value });
-    uni.showToast({ title: '申请已提交', icon: 'success' });
-    await refresh();
-  } finally {
-    submitting.value = false;
-  }
 }
 
 function formatDate(value: string): string {
@@ -88,9 +49,26 @@ onShow(refresh);
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .header-card,
@@ -102,8 +80,8 @@ onShow(refresh);
 }
 
 .header-card {
-  background: linear-gradient(135deg, #cf2c2c, #9b1717);
-  color: #fff;
+  background: #edf2f4;
+  color: #3d4652;
 }
 
 .header-title,
@@ -113,45 +91,16 @@ onShow(refresh);
   font-weight: 900;
 }
 
+.header-desc {
+  display: block;
+  margin-top: 12rpx;
+  color: #667085;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
 
 .card {
   margin-top: 22rpx;
-}
-
-.amount-grid {
-  margin-top: 22rpx;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14rpx;
-}
-
-.amount-option {
-  border-radius: 20rpx;
-  padding: 22rpx 0;
-  background: #fff5f0;
-  color: #9b1717;
-  text-align: center;
-  font-weight: 900;
-}
-
-.amount-option.active {
-  background: #cf2c2c;
-  color: #fff;
-}
-
-.input {
-  margin-top: 18rpx;
-  border: 1px solid #d0d5dd;
-  border-radius: 20rpx;
-  padding: 20rpx;
-}
-
-.primary-btn {
-  margin-top: 20rpx;
-  border-radius: 999rpx;
-  background: #d72d2d;
-  color: #fff;
-  font-weight: 800;
 }
 
 .record {

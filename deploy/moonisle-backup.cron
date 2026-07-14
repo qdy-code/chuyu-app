@@ -1,0 +1,5 @@
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Asia/Shanghai: daily database and upload backup, retained for 14 days.
+30 2 * * * root flock -n /var/lock/moonisle-backup.lock bash /opt/chuyu-app/deploy/backup.sh >> /var/log/moonisle-backup.log 2>&1

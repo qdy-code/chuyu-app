@@ -34,9 +34,21 @@ export function verifyToken(token: string): TokenPayload | null {
   if (!match) return null;
 
   try {
-    const payload = JSON.parse(Buffer.from(data, 'base64url').toString()) as TokenPayload;
-    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return payload;
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString()) as Partial<TokenPayload>;
+    const now = Math.floor(Date.now() / 1000);
+    if (
+      typeof payload.sub !== 'string' ||
+      !payload.sub ||
+      (payload.role !== 'member' && payload.role !== 'admin') ||
+      typeof payload.iat !== 'number' ||
+      typeof payload.exp !== 'number' ||
+      payload.iat > now + 60 ||
+      payload.exp <= now ||
+      payload.exp <= payload.iat
+    ) {
+      return null;
+    }
+    return payload as TokenPayload;
   } catch {
     return null;
   }

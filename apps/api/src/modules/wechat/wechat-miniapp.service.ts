@@ -31,7 +31,8 @@ export class WechatMiniappService {
 
   async resolveOpenId(code: string, openIdHint?: string): Promise<string> {
     if (this.isMockMode()) {
-      return openIdHint?.trim() || process.env.MINIAPP_MOCK_OPEN_ID || 'mock-openid-local-user';
+      const mockOpenId = process.env.MINIAPP_MOCK_OPEN_ID?.trim();
+      return mockOpenId || openIdHint?.trim() || `mock-${code}`;
     }
 
     const appId = this.requiredEnv('WECHAT_MINIAPP_APP_ID');
@@ -107,7 +108,7 @@ export class WechatMiniappService {
   }
 
   private async getJson<T>(url: string): Promise<T> {
-    const response = await fetch(url);
+    const response = await this.fetchWithTimeout(url);
     if (!response.ok) {
       throw new Error(`wechat request failed: ${response.status}`);
     }
@@ -115,7 +116,7 @@ export class WechatMiniappService {
   }
 
   private async postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -124,5 +125,20 @@ export class WechatMiniappService {
       throw new Error(`wechat request failed: ${response.status}`);
     }
     return response.json() as Promise<T>;
+  }
+
+  private async fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('wechat request timed out');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

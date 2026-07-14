@@ -10,13 +10,6 @@ export class WechatLoginDto implements WechatLoginRequest {
   @IsOptional()
   openIdHint?: string;
 
-  @IsString()
-  @IsOptional()
-  nickname?: string;
-
-  @IsString()
-  @IsOptional()
-  avatarUrl?: string;
 }
 
 export class AdminLoginDto {

@@ -5,21 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build",
+    "check:release": "node scripts/check-release-config.mjs",
+    "build:release": "node scripts/check-release-config.mjs && vue-tsc --noEmit && vite build --mode production",
     "preview": "vite preview",
     "lint": "echo admin-lint-skip"
   },
   "dependencies": {
     "@member-platform/shared": "workspace:*",
-    "@vueuse/core": "^14.3.0",
-    "lucide-vue-next": "^1.0.0",
+    "@lucide/vue": "^1.24.0",
     "naive-ui": "^2.44.1",
     "vue": "^3.5.21"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
+    "vite": "^7.3.6",
     "vue-tsc": "^3.0.6"
   }
 }

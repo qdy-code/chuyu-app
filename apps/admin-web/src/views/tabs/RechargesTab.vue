@@ -5,135 +5,171 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NIcon,
+  NDescriptions,
+  NDescriptionsItem,
+  NForm,
+  NFormItem,
   NInput,
+  NInputNumber,
+  NSelect,
   NSpace,
-  NTag,
-  useDialog,
+  NStatistic,
   useMessage,
 } from 'naive-ui';
-import { Check, X } from 'lucide-vue-next';
-import type { RechargeOrder, RechargeStatus } from '@member-platform/shared';
+import type { AuditLog, MemberProfile } from '@member-platform/shared';
 import { api } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
 import { formatMoney } from '@/composables/useFormatters';
 
-const { recharges, loadAll } = useDataStore();
+const { members, logs, loadAll } = useDataStore();
 const message = useMessage();
-const dialog = useDialog();
 
-const rejectReason = ref('资料不完整');
-const busyId = ref('');
+type RechargeRecord = {
+  id: string;
+  userId: string;
+  amount: number;
+  points: number;
+  remark?: string;
+  orderId?: string;
+  createdAt: string;
+};
 
-function statusTag(status: RechargeStatus) {
-  const map: Record<RechargeStatus, { type: 'warning' | 'success' | 'error'; text: string }> = {
-    PENDING: { type: 'warning', text: '待处理' },
-    APPROVED: { type: 'success', text: '已通过' },
-    REJECTED: { type: 'error', text: '已拒绝' },
-  };
-  return map[status];
-}
+const submitting = ref(false);
+const memberKeyword = ref('');
+const form = ref({
+  userId: '',
+  amount: 0,
+  points: 0,
+  remark: '',
+});
 
-async function approve(id: string) {
-  busyId.value = id;
+const memberOptions = computed(() =>
+  members.value
+    .filter((member) => {
+      const keyword = memberKeyword.value.trim().toLowerCase();
+      if (!keyword) return true;
+      return `${member.nickname} ${member.id} ${member.phone || ''} ${member.remark || ''}`
+        .toLowerCase()
+        .includes(keyword);
+    })
+    .map((member) => ({
+      label: `${member.nickname} / ${member.id}${member.phone ? ` / ${member.phone}` : ''}`,
+      value: member.id,
+    })),
+);
+
+const selectedMember = computed<MemberProfile | undefined>(() =>
+  members.value.find((member) => member.id === form.value.userId),
+);
+
+const nextBalance = computed(() =>
+  Math.round(((selectedMember.value?.balance || 0) + Number(form.value.amount || 0)) * 100) / 100,
+);
+
+const nextPoints = computed(() =>
+  Math.round(((selectedMember.value?.points || 0) + Number(form.value.points || 0)) * 100) / 100,
+);
+
+const rechargeRecords = computed<RechargeRecord[]>(() =>
+  logs.value
+    .filter((log) => log.action === 'member.recharge')
+    .map((log) => toRechargeRecord(log))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+);
+
+async function submitRecharge() {
+  const amount = Number(form.value.amount || 0);
+  const points = Number(form.value.points || 0);
+  if (!form.value.userId) {
+    message.warning('请选择顾客');
+    return;
+  }
+  if (amount <= 0 && points <= 0) {
+    message.warning('充值金额或积分至少填写一项');
+    return;
+  }
+
+  submitting.value = true;
   try {
-    await api.approveRecharge(id);
-    message.success('已通过');
+    await api.createRecharge({
+      userId: form.value.userId,
+      amount,
+      points,
+      remark: form.value.remark.trim() || undefined,
+    });
+    message.success('充值已到账');
+    form.value.amount = 0;
+    form.value.points = 0;
+    form.value.remark = '';
     await loadAll();
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : '操作失败');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '充值失败');
   } finally {
-    busyId.value = '';
+    submitting.value = false;
   }
 }
 
-function confirmReject(id: string) {
-  const reason = rejectReason.value.trim() || '未提供原因';
-  dialog.warning({
-    title: '拒绝充值',
-    content: `确认拒绝订单 ${id}？原因将同步给会员。`,
-    positiveText: '确认拒绝',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      busyId.value = id;
-      try {
-        await api.rejectRecharge(id, { reason });
-        message.success('已拒绝');
-        await loadAll();
-      } catch (e) {
-        message.error(e instanceof Error ? e.message : '操作失败');
-      } finally {
-        busyId.value = '';
-      }
-    },
-  });
+function toRechargeRecord(log: AuditLog): RechargeRecord {
+  const metadata = log.metadata || {};
+  const balance = readChange(metadata.balance);
+  const points = readChange(metadata.points);
+  return {
+    id: log.id,
+    userId: log.targetId,
+    amount: balance,
+    points,
+    remark: typeof metadata.remark === 'string' ? metadata.remark : undefined,
+    orderId: typeof metadata.rechargeOrderId === 'string' ? metadata.rechargeOrderId : undefined,
+    createdAt: log.createdAt,
+  };
 }
 
-const columns = computed<DataTableColumns<RechargeOrder>>(() => [
+function readChange(value: unknown): number {
+  if (!value || typeof value !== 'object' || !('change' in value)) {
+    return 0;
+  }
+  const change = Number((value as { change?: unknown }).change || 0);
+  return Number.isFinite(change) ? change : 0;
+}
+
+const columns = computed<DataTableColumns<RechargeRecord>>(() => [
   {
-    title: '订单号',
-    key: 'id',
-    width: 220,
-    render: (row) => h('span', { class: 'mono' }, row.id),
+    title: '时间',
+    key: 'createdAt',
+    width: 190,
+    render: (row) => new Date(row.createdAt).toLocaleString('zh-CN', { hour12: false }),
   },
-  { title: '会员 ID', key: 'userId', width: 280, render: (row) => h('span', { class: 'mono' }, row.userId) },
   {
-    title: '金额',
+    title: '会员号',
+    key: 'userId',
+    minWidth: 220,
+    render: (row) => h('span', { class: 'mono' }, row.userId),
+  },
+  {
+    title: '充值金额',
     key: 'amount',
-    width: 130,
-    render: (row) =>
-      h('strong', { class: 'amount tabular-num' }, `¥${formatMoney(row.amount)}`),
+    width: 140,
+    render: (row) => h('strong', { class: 'amount tabular-num' }, `¥${formatMoney(row.amount)}`),
   },
   {
-    title: '状态',
-    key: 'status',
-    width: 110,
-    render: (row) => {
-      const meta = statusTag(row.status);
-      return h(NTag, { type: meta.type, bordered: false, size: 'small' }, () => meta.text);
-    },
+    title: '充值积分',
+    key: 'points',
+    width: 120,
+    render: (row) => h('strong', { class: 'points tabular-num' }, String(row.points)),
   },
   {
-    title: '操作',
-    key: 'actions',
+    title: '备注',
+    key: 'remark',
+    minWidth: 180,
+    render: (row) => row.remark || '—',
+  },
+  {
+    title: '卡金流水号',
+    key: 'orderId',
     width: 180,
-    fixed: 'right',
-    render: (row) =>
-      row.status === 'PENDING'
-        ? h(NSpace, { size: 6 }, () => [
-            h(
-              NButton,
-              {
-                type: 'primary',
-                size: 'small',
-                loading: busyId.value === row.id,
-                onClick: () => approve(row.id),
-              },
-              {
-                icon: () => h(NIcon, null, { default: () => h(Check) }),
-                default: () => '通过',
-              },
-            ),
-            h(
-              NButton,
-              {
-                secondary: true,
-                type: 'error',
-                size: 'small',
-                loading: busyId.value === row.id,
-                onClick: () => confirmReject(row.id),
-              },
-              {
-                icon: () => h(NIcon, null, { default: () => h(X) }),
-                default: () => '拒绝',
-              },
-            ),
-          ])
-        : h('span', { class: 'dim' }, '—'),
+    render: (row) => (row.orderId ? h('span', { class: 'mono' }, row.orderId) : '—'),
   },
 ]);
-
-const pendingCount = computed(() => recharges.value.filter((r) => r.status === 'PENDING').length);
 </script>
 
 <template>
@@ -141,19 +177,77 @@ const pendingCount = computed(() => recharges.value.filter((r) => r.status === '
     <NCard :bordered="false" class="surface">
       <template #header>
         <div class="card-header">
-          <span>充值申请（待处理 {{ pendingCount }}）</span>
-          <NSpace :size="8" align="center">
-            <span class="hint">默认拒绝理由：</span>
-            <NInput v-model:value="rejectReason" size="small" style="width: 240px" placeholder="填写拒绝原因" />
-          </NSpace>
+          <span>顾客充值</span>
+          <span class="hint">金额计入卡金余额，积分单独计入会员积分</span>
+        </div>
+      </template>
+
+      <NForm label-placement="top">
+        <div class="form-grid">
+          <NFormItem label="检索顾客">
+            <NInput
+              v-model:value="memberKeyword"
+              clearable
+              placeholder="昵称 / 会员号 / 手机号 / 备注"
+            />
+          </NFormItem>
+          <NFormItem label="选择顾客">
+            <NSelect
+              v-model:value="form.userId"
+              filterable
+              clearable
+              :options="memberOptions"
+              placeholder="从检索结果中选择账号"
+            />
+          </NFormItem>
+          <NFormItem label="充值金额">
+            <NInputNumber v-model:value="form.amount" :min="0" :precision="2" :step="100" placeholder="输入金额" />
+          </NFormItem>
+          <NFormItem label="充值积分">
+            <NInputNumber v-model:value="form.points" :min="0" :precision="0" :step="10" placeholder="输入积分" />
+          </NFormItem>
+        </div>
+
+        <NFormItem label="备注">
+          <NInput v-model:value="form.remark" type="textarea" :rows="2" placeholder="可填写本次充值说明" />
+        </NFormItem>
+
+        <div v-if="selectedMember" class="preview">
+          <NDescriptions :column="4" size="small" label-placement="top">
+            <NDescriptionsItem label="当前余额">
+              <NStatistic :value="selectedMember.balance" :precision="2" tabular-nums prefix="¥" />
+            </NDescriptionsItem>
+            <NDescriptionsItem label="充值后余额">
+              <NStatistic :value="nextBalance" :precision="2" tabular-nums prefix="¥" />
+            </NDescriptionsItem>
+            <NDescriptionsItem label="当前积分">
+              <NStatistic :value="selectedMember.points" tabular-nums />
+            </NDescriptionsItem>
+            <NDescriptionsItem label="充值后积分">
+              <NStatistic :value="nextPoints" tabular-nums />
+            </NDescriptionsItem>
+          </NDescriptions>
+        </div>
+
+        <NSpace justify="end">
+          <NButton type="primary" :loading="submitting" @click="submitRecharge">确认充值</NButton>
+        </NSpace>
+      </NForm>
+    </NCard>
+
+    <NCard :bordered="false" class="surface">
+      <template #header>
+        <div class="card-header">
+          <span>充值记录</span>
+          <span class="hint">显示后台充值的金额和积分变化；卡金流水号仅金额充值生成</span>
         </div>
       </template>
 
       <NDataTable
         :columns="columns"
-        :data="recharges"
+        :data="rechargeRecords"
         :bordered="false"
-        :scroll-x="1000"
+        :scroll-x="900"
         :single-line="false"
         size="small"
       />
@@ -175,6 +269,19 @@ const pendingCount = computed(() => recharges.value.filter((r) => r.status === '
   flex-wrap: wrap;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(280px, 1.3fr) minmax(150px, 0.7fr) minmax(150px, 0.7fr);
+  gap: 16px;
+}
+
+.preview {
+  margin-bottom: 18px;
+  border-radius: 10px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
 .hint {
   font-size: 13px;
   color: var(--color-text-muted);
@@ -184,13 +291,19 @@ const pendingCount = computed(() => recharges.value.filter((r) => r.status === '
   color: var(--color-brand);
 }
 
+.points {
+  color: #0f766e;
+}
+
 :deep(.mono) {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   font-size: 12px;
   color: var(--color-text-muted);
 }
 
-:deep(.dim) {
-  color: var(--color-text-muted);
+@media (max-width: 900px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

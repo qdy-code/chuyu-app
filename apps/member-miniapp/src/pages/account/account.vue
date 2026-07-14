@@ -1,8 +1,13 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
-      <text class="header-title">账户资料</text>
-      <text class="header-desc">查看会员信息、维护生日并管理本机登录状态</text>
+      <image class="header-bg" src="/static/brand/account-header.jpg" mode="aspectFill" />
+      <view class="header-copy">
+        <text class="header-kicker">MOONSTONE ISLE</text>
+        <text class="header-title">账户资料</text>
+        <text class="header-desc">修改头像和昵称，查看会员号并管理个人资料</text>
+      </view>
     </view>
 
     <view v-if="!sessionState.profile" class="card">
@@ -11,23 +16,73 @@
     </view>
 
     <template v-else>
+      <view class="card avatar-card">
+        <view class="section-heading">
+          <text class="section-title">我的头像</text>
+          <text class="required-pill">可修改</text>
+        </view>
+        <view class="avatar-setting">
+          <button
+            class="avatar-picker"
+            open-type="chooseAvatar"
+            :disabled="avatarSaving"
+            @chooseavatar="handleWechatAvatar"
+          >
+            <image class="profile-avatar" :src="avatarSrc" mode="aspectFill" />
+          </button>
+          <view class="avatar-copy">
+            <text class="avatar-title">{{ avatarSaving ? '头像上传中...' : '点击头像选择微信头像' }}</text>
+            <text class="hint">保存后用于会员资料和预约信息。</text>
+          </view>
+        </view>
+      </view>
+
       <view class="card">
-        <text class="section-title">生日</text>
+        <view class="section-heading">
+          <text class="section-title">我的昵称</text>
+          <text class="required-pill">可修改</text>
+        </view>
+        <input
+          v-model="nickname"
+          class="input"
+          type="nickname"
+          maxlength="30"
+          placeholder="请输入顾客昵称"
+        />
+        <text class="hint">昵称用于小程序内展示，可随时修改；会员号由系统生成且不可修改。</text>
+        <button class="secondary-btn" @click="saveNickname" :disabled="nicknameSaving">
+          {{ nicknameSaving ? '保存中...' : '保存昵称' }}
+        </button>
+      </view>
+
+      <view class="card">
+        <view class="section-heading">
+          <text class="section-title">生日</text>
+          <text v-if="!birthdayLocked" class="required-pill">可设置 · 月日</text>
+        </view>
         <view class="info-row">
-          <text class="info-label">生日</text>
-          <picker mode="date" :value="birthday" @change="handleBirthdayChange">
-            <view class="picker">{{ birthday || '请选择生日' }}</view>
+          <text class="info-label">生日日期</text>
+          <picker
+            mode="multiSelector"
+            :range="birthdayPickerRange"
+            :value="birthdayPickerValue"
+            :disabled="birthdayLocked"
+            @columnchange="handleBirthdayColumnChange"
+            @change="handleBirthdayChange"
+          >
+            <view class="picker" :class="{ disabled: birthdayLocked }">{{ birthday || '请选择月日' }}</view>
           </picker>
         </view>
-        <button class="secondary-btn" @click="saveBirthday" :disabled="birthdaySaving">
-          {{ birthdaySaving ? '保存中...' : '保存生日' }}
+        <text class="hint">{{ birthdayLocked ? '生日日期已保存，顾客端不可再次修改。' : '生日仅记录月日，不包含年份，保存后顾客端仅可设置一次。' }}</text>
+        <button class="secondary-btn" @click="saveBirthday" :disabled="birthdaySaving || birthdayLocked">
+          {{ birthdayLocked ? '生日已锁定' : birthdaySaving ? '保存中...' : '保存生日日期' }}
         </button>
       </view>
 
       <view class="card">
         <text class="section-title">会员信息</text>
         <view class="info-row">
-          <text class="info-label">会员ID</text>
+          <text class="info-label">会员号</text>
           <text class="info-value wrap">{{ sessionState.profile.id }}</text>
         </view>
         <view class="info-row">
@@ -40,9 +95,9 @@
         </view>
         <view class="info-row">
           <text class="info-label">联系手机号</text>
-          <text class="info-value">{{ sessionState.profile.phone || '门店登记后显示' }}</text>
+          <text class="info-value">{{ sessionState.profile.phone || '未填写' }}</text>
         </view>
-        <text class="hint">手机号由门店管理员在到店时为你登记，无需在小程序内填写。</text>
+        <text class="hint">手机号为首次登录填写，用于门店确认预约和会员资料。</text>
       </view>
 
       <view class="card danger-zone">
@@ -58,34 +113,70 @@
         <text class="legal-divider">·</text>
         <text class="legal-link" @click="openTerms">用户协议</text>
       </view>
-      <text class="footer-line">© {{ year }} 初屿会员</text>
-      <text class="footer-line">{{ icpRecord }}</text>
+      <text class="footer-line">© {{ year }} 月光石屿 MOONOISLE</text>
+      <text v-if="icpRecord" class="footer-line">{{ icpRecord }}</text>
       <text v-if="publicSecurityRecord" class="footer-line">{{ publicSecurityRecord }}</text>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { updateMyProfile } from '@/utils/api';
+import { readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
+import { resolveImageForDisplay } from '@/utils/image-cache';
 import { refreshSessionProfile } from '@/utils/member';
 
+const nickname = ref('');
+const nicknameSaving = ref(false);
+const avatarSaving = ref(false);
+const avatarSrc = ref('/static/brand/logo-avatar-v2.png');
 const birthday = ref('');
 const birthdaySaving = ref(false);
-
+const birthdayLocked = computed(() => Boolean(sessionState.profile?.birthday));
+const monthOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const birthdayPickerValue = ref([0, 0]);
+const selectedMonth = computed(() => monthOptions[birthdayPickerValue.value[0]] || '01');
+const dayOptions = computed(() => {
+  const month = Number(selectedMonth.value);
+  const maxDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] || 31;
+  return Array.from({ length: maxDays }, (_, index) => String(index + 1).padStart(2, '0'));
+});
+const birthdayPickerRange = computed(() => [monthOptions, dayOptions.value]);
 const year = new Date().getFullYear();
-const icpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined) || '陕ICP备XXXXXXXX号';
+const rawIcpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined)?.trim();
+const icpRecord = rawIcpRecord && !/X{4,}|请填写|示例/i.test(rawIcpRecord) ? rawIcpRecord : undefined;
 const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
 
 async function refresh() {
   await refreshSessionProfile();
-  birthday.value = sessionState.profile?.birthday || '';
+  nickname.value = sessionState.profile?.nickname || '';
+  birthday.value = toBirthdayMonthDay(sessionState.profile?.birthday);
+  syncBirthdayPicker(birthday.value);
+  avatarSrc.value = await resolveImageForDisplay(
+    sessionState.profile?.avatarUrl,
+    '/static/brand/logo-avatar-v2.png',
+  );
 }
 
-function handleBirthdayChange(event: { detail: { value: string } }) {
-  birthday.value = event.detail.value;
+function handleBirthdayColumnChange(event: { detail: { column: number; value: number } }) {
+  if (birthdayLocked.value) return;
+
+  const next = [...birthdayPickerValue.value];
+  next[event.detail.column] = event.detail.value;
+  if (event.detail.column === 0) {
+    next[1] = Math.min(next[1], dayOptions.value.length - 1);
+  }
+  birthdayPickerValue.value = next;
+}
+
+function handleBirthdayChange(event: { detail: { value: number[] } }) {
+  if (birthdayLocked.value) return;
+  birthdayPickerValue.value = event.detail.value;
+  const month = monthOptions[birthdayPickerValue.value[0]] || '01';
+  const day = dayOptions.value[birthdayPickerValue.value[1]] || '01';
+  birthday.value = `${month}-${day}`;
 }
 
 function openPrivacy() {
@@ -96,23 +187,94 @@ function openTerms() {
   uni.navigateTo({ url: '/pages/legal/terms' });
 }
 
+async function handleWechatAvatar(event: { detail: { avatarUrl?: string } }) {
+  const filePath = event.detail.avatarUrl;
+  if (filePath) {
+    await saveAvatar(filePath);
+  }
+}
+
+async function saveAvatar(filePath: string) {
+  if (!sessionState.userId) {
+    uni.showToast({ title: '请先登录', icon: 'none' });
+    return;
+  }
+  const previousAvatar = avatarSrc.value;
+  avatarSrc.value = filePath;
+  avatarSaving.value = true;
+  try {
+    setProfile(await uploadMyAvatar(filePath));
+    uni.showToast({ title: '头像已更新', icon: 'success' });
+  } catch (error) {
+    avatarSrc.value = previousAvatar;
+    uni.showToast({ title: readableErrorMessage(error, '头像上传失败').slice(0, 18), icon: 'none' });
+  } finally {
+    avatarSaving.value = false;
+  }
+}
+
 async function saveBirthday() {
   if (!sessionState.userId) {
     uni.showToast({ title: '请先登录', icon: 'none' });
     return;
   }
+  if (birthdayLocked.value) {
+    uni.showToast({ title: '生日不可再次修改', icon: 'none' });
+    return;
+  }
   if (!birthday.value) {
-    uni.showToast({ title: '请选择生日', icon: 'none' });
+    uni.showToast({ title: '请选择生日日期', icon: 'none' });
     return;
   }
 
   birthdaySaving.value = true;
   try {
     setProfile(await updateMyProfile({ birthday: birthday.value }));
+    birthday.value = toBirthdayMonthDay(sessionState.profile?.birthday);
+    syncBirthdayPicker(birthday.value);
     uni.showToast({ title: '生日已保存', icon: 'success' });
+  } catch (error) {
+    uni.showToast({ title: readableErrorMessage(error, '保存失败').slice(0, 18), icon: 'none' });
   } finally {
     birthdaySaving.value = false;
   }
+}
+
+async function saveNickname() {
+  if (!sessionState.userId) {
+    uni.showToast({ title: '请先登录', icon: 'none' });
+    return;
+  }
+  const nextNickname = nickname.value.trim();
+  if (!nextNickname) {
+    uni.showToast({ title: '请输入昵称', icon: 'none' });
+    return;
+  }
+  nicknameSaving.value = true;
+  try {
+    setProfile(await updateMyProfile({ nickname: nextNickname }));
+    nickname.value = sessionState.profile?.nickname || nextNickname;
+    uni.showToast({ title: '昵称已保存', icon: 'success' });
+  } catch (error) {
+    uni.showToast({ title: readableErrorMessage(error, '保存失败').slice(0, 18), icon: 'none' });
+  } finally {
+    nicknameSaving.value = false;
+  }
+}
+
+function toBirthdayMonthDay(value?: string): string {
+  if (!value) return '';
+  const match = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.exec(value);
+  return match ? `${match[1]}-${match[2]}` : value;
+}
+
+function syncBirthdayPicker(value: string) {
+  const normalized = toBirthdayMonthDay(value);
+  const [month = '01', day = '01'] = normalized.split('-');
+  const monthIndex = Math.max(0, monthOptions.indexOf(month));
+  const maxDayIndex = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthIndex] - 1;
+  const dayIndex = Math.min(Math.max(0, Number(day) - 1), maxDayIndex);
+  birthdayPickerValue.value = [monthIndex, dayIndex];
 }
 
 function showModal(options: { title: string; content: string; confirmText: string }): Promise<boolean> {
@@ -139,6 +301,7 @@ async function confirmLogout() {
   if (!confirmed) return;
 
   clearSession();
+  nickname.value = '';
   birthday.value = '';
   uni.showToast({ title: '已退出登录', icon: 'success' });
   setTimeout(() => {
@@ -151,9 +314,26 @@ onShow(refresh);
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .header-card,
@@ -165,8 +345,31 @@ onShow(refresh);
 }
 
 .header-card {
-  background: linear-gradient(135deg, #cf2c2c, #9b1717);
-  color: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 260rpx;
+  background: #edf2f4;
+  color: #3d4652;
+}
+
+.header-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.header-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.header-kicker {
+  display: block;
+  color: #6f7f8a;
+  font-size: 22rpx;
+  font-weight: 800;
+  letter-spacing: 4rpx;
 }
 
 .header-title,
@@ -180,12 +383,71 @@ onShow(refresh);
 .header-desc {
   display: block;
   margin-top: 10rpx;
-  color: rgba(255, 255, 255, 0.82);
+  color: #6f7f8a;
   font-size: 24rpx;
 }
 
 .card {
   margin-top: 22rpx;
+}
+
+.avatar-setting {
+  display: flex;
+  align-items: center;
+  gap: 26rpx;
+  margin-top: 24rpx;
+}
+
+.avatar-picker {
+  width: 132rpx;
+  height: 132rpx;
+  flex: 0 0 132rpx;
+  margin: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: #edf2f4;
+  box-shadow: 0 10rpx 28rpx rgba(31, 41, 55, 0.14);
+  line-height: 1;
+}
+
+.avatar-picker::after {
+  border: 0;
+}
+
+.profile-avatar {
+  width: 132rpx;
+  height: 132rpx;
+  border-radius: 50%;
+}
+
+.avatar-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.avatar-title {
+  display: block;
+  color: #273247;
+  font-size: 27rpx;
+  font-weight: 900;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.required-pill {
+  flex: 0 0 auto;
+  border: 1px solid rgba(61, 70, 82, 0.22);
+  border-radius: 999rpx;
+  padding: 8rpx 16rpx;
+  background: #edf2f4;
+  color: #3d4652;
+  font-size: 22rpx;
+  font-weight: 900;
 }
 
 .info-row {
@@ -221,6 +483,27 @@ onShow(refresh);
   color: #111827;
 }
 
+.input {
+  width: 100%;
+  min-height: 84rpx;
+  margin-top: 20rpx;
+  border-radius: 18rpx;
+  padding: 0 22rpx;
+  background: #f8fafc;
+  color: #111827;
+  font-size: 30rpx;
+  box-sizing: border-box;
+}
+
+.input.disabled {
+  color: #98a2b3;
+}
+
+.picker.disabled {
+  color: #98a2b3;
+  background: #f8fafc;
+}
+
 .primary-btn,
 .secondary-btn {
   margin-top: 24rpx;
@@ -229,13 +512,13 @@ onShow(refresh);
 }
 
 .primary-btn {
-  background: #d72d2d;
-  color: #fff;
+  background: #3d4652;
+  color: #f7f4ea;
 }
 
 .secondary-btn {
-  background: #fff3e0;
-  color: #9b1717;
+  background: #edf2f4;
+  color: #3d4652;
 }
 
 .danger-zone {
@@ -282,7 +565,7 @@ onShow(refresh);
 
 .legal-link {
   font-size: 24rpx;
-  color: #cf2c2c;
+  color: #6f7f8a;
 }
 
 .legal-divider {

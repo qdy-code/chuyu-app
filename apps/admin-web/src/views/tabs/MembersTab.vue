@@ -2,9 +2,9 @@
 import { computed, h, ref } from 'vue';
 import type { DataTableColumns } from 'naive-ui';
 import {
+  NAvatar,
   NButton,
   NCard,
-  NDatePicker,
   NEmpty,
   NIcon,
   NInput,
@@ -17,14 +17,13 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui';
-import { Save, UserPlus, Search } from 'lucide-vue-next';
+import { Save, UserPlus, Search } from '@lucide/vue';
 import type { MemberProfile } from '@member-platform/shared';
-import { api } from '@/api/client';
+import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
 import { discountPercent, formatMoney } from '@/composables/useFormatters';
 
 interface EditRow {
-  id: string;
   nickname: string;
   remark: string;
   birthday: string;
@@ -47,7 +46,7 @@ const memberForm = ref({
   nickname: '',
   remark: '',
   phone: '',
-  birthday: null as number | null,
+    birthday: '',
   levelId: '',
   discountRate: 1,
   balance: 0,
@@ -63,10 +62,9 @@ function rowsKeyOf(id: string): EditRow {
 function syncEditRow(item: MemberProfile): EditRow {
   if (!editRows.value[item.id]) {
     editRows.value[item.id] = {
-      id: item.id,
       nickname: item.nickname,
       remark: item.remark || '',
-      birthday: item.birthday || '',
+      birthday: normalizeBirthday(item.birthday),
       levelId: item.levelId,
       discountRate: item.discountRate,
       balance: item.balance,
@@ -92,16 +90,10 @@ const matchedMembers = computed(() => {
   });
 });
 
-function birthdayToTimestamp(value: string): number | null {
-  if (!value) return null;
-  const ts = new Date(value).getTime();
-  return Number.isNaN(ts) ? null : ts;
-}
-
-function birthdayFromTimestamp(value: number | null): string {
+function normalizeBirthday(value?: string): string {
   if (!value) return '';
-  const d = new Date(value);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const match = /(?:\d{4}-)?(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[1]}-${match[2]}` : value;
 }
 
 async function createMember() {
@@ -129,7 +121,7 @@ async function createMember() {
       nickname,
       remark: memberForm.value.remark.trim() || undefined,
       phone: memberForm.value.phone.trim() || undefined,
-      birthday: birthdayFromTimestamp(memberForm.value.birthday) || undefined,
+      birthday: memberForm.value.birthday.trim() || undefined,
       levelId,
       discountRate,
       balance: Number(memberForm.value.balance || 0),
@@ -151,7 +143,7 @@ function resetForm() {
     nickname: '',
     remark: '',
     phone: '',
-    birthday: null,
+    birthday: '',
     levelId: levels.value[0]?.id || '',
     discountRate: levels.value[0]?.discountRate || 1,
     balance: 0,
@@ -165,7 +157,6 @@ async function saveMember(originId: string) {
   savingId.value = originId;
   try {
     await api.updateMember(originId, {
-      id: row.id.trim(),
       nickname: row.nickname.trim(),
       remark: row.remark.trim() || undefined,
       birthday: row.birthday || undefined,
@@ -195,22 +186,33 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
   {
     title: '会员',
     key: 'identity',
-    width: 220,
+    width: 280,
     render: (row) => {
       const editRow = syncEditRow(row);
-      return h('div', { class: 'cell-identity' }, [
-        h(NInput, {
-          value: editRow.nickname,
-          'onUpdate:value': (v: string) => (editRow.nickname = v),
-          size: 'small',
-          placeholder: '昵称',
-        }),
-        h('div', { class: 'cell-id' }, [
-          h(NTooltip, null, {
-            trigger: () =>
-              h('span', { class: 'mono' }, row.id.length > 16 ? `${row.id.slice(0, 16)}…` : row.id),
-            default: () => row.id,
+      return h('div', { class: 'member-identity' }, [
+        h(
+          NAvatar,
+          {
+            round: true,
+            size: 44,
+            src: toAbsoluteImageUrl(row.avatarUrl),
+          },
+          { default: () => row.nickname.slice(0, 1) },
+        ),
+        h('div', { class: 'cell-identity' }, [
+          h(NInput, {
+            value: editRow.nickname,
+            'onUpdate:value': (v: string) => (editRow.nickname = v),
+            size: 'small',
+            placeholder: '昵称',
           }),
+          h('div', { class: 'cell-id' }, [
+            h(NTooltip, null, {
+              trigger: () =>
+                h('span', { class: 'mono' }, row.id.length > 16 ? `${row.id.slice(0, 16)}…` : row.id),
+              default: () => row.id,
+            }),
+          ]),
         ]),
       ]);
     },
@@ -288,7 +290,7 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
         value: editRow.birthday,
         size: 'small',
         type: 'text',
-        placeholder: 'YYYY-MM-DD',
+        placeholder: 'MM-DD',
         'onUpdate:value': (v: string) => (editRow.birthday = v),
       });
     },
@@ -372,7 +374,7 @@ function bulkCheckPending() {
     <NCard title="新增会员" :bordered="false" class="surface">
       <div class="form-grid">
         <NInput v-model:value="memberForm.nickname" placeholder="昵称 *" />
-        <NInput v-model:value="memberForm.id" placeholder="会员ID（留空自动生成）" />
+        <NInput v-model:value="memberForm.id" placeholder="会员号（留空自动生成）" />
         <NInput v-model:value="memberForm.phone" placeholder="手机号（可选）" />
         <NSelect
           v-model:value="memberForm.levelId"
@@ -388,12 +390,7 @@ function bulkCheckPending() {
         />
         <NInputNumber v-model:value="memberForm.balance" :min="0" :step="1" placeholder="初始余额" />
         <NInputNumber v-model:value="memberForm.points" :min="0" :step="1" placeholder="初始积分" />
-        <NDatePicker
-          v-model:value="memberForm.birthday"
-          type="date"
-          placeholder="生日"
-          clearable
-        />
+        <NInput v-model:value="memberForm.birthday" maxlength="5" placeholder="生日月日（MM-DD）" clearable />
         <NInput v-model:value="memberForm.remark" placeholder="备注" />
         <NButton type="primary" :loading="creating" @click="createMember">
           <template #icon>
@@ -465,7 +462,14 @@ function bulkCheckPending() {
 :deep(.cell-identity) {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 4px;
+}
+
+:deep(.member-identity) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 :deep(.cell-id) {

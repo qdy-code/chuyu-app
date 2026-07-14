@@ -11,7 +11,7 @@ export class MemberAuthMiddleware implements NestMiddleware {
     }
 
     const payload = verifyToken(auth.slice(7));
-    if (!payload) {
+    if (!payload || payload.role !== 'member') {
       throw new UnauthorizedException('invalid or expired token');
     }
 

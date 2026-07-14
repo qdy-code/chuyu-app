@@ -1,5 +1,6 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view v-if="!sessionState.profile" class="empty-card">
       <text class="empty-title">请先登录</text>
       <button class="primary-btn" @click="goHome">返回首页</button>
@@ -7,11 +8,12 @@
 
     <template v-else>
       <view class="member-card">
-        <text class="card-label">CHUYU MEMBER</text>
+        <image class="card-bg" src="/static/brand/member-card-bg.jpg" mode="aspectFill" />
+        <text class="card-label">MOONSTONE ISLE MEMBER</text>
         <text class="nickname">{{ sessionState.profile.nickname }}</text>
         <text class="level">{{ sessionState.profile.levelName }}</text>
         <view class="code-box">
-          <text class="code-title">会员ID</text>
+          <text class="code-title">会员号</text>
           <text class="member-id">{{ sessionState.profile.id }}</text>
         </view>
       </view>
@@ -30,7 +32,7 @@
           <text class="stat-label">会员折扣</text>
         </view>
       </view>
-</template>
+    </template>
   </view>
 </template>
 
@@ -48,24 +50,59 @@ onShow(refreshSessionProfile);
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 32rpx 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .member-card {
+  position: relative;
+  overflow: hidden;
   min-height: 460rpx;
   border-radius: 42rpx;
   padding: 42rpx;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #cf2c2c, #861212);
-  color: #fff;
-  box-shadow: 0 28rpx 70rpx rgba(197, 36, 36, 0.28);
+  background: #edf2f4;
+  color: #3d4652;
+  box-shadow: 0 28rpx 70rpx rgba(87, 101, 116, 0.16);
+}
+
+.card-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.96;
+}
+
+.card-label,
+.nickname,
+.level,
+.code-box {
+  position: relative;
+  z-index: 1;
 }
 
 .card-label {
-  color: #ffdba3;
+  color: #6f7f8a;
   font-size: 24rpx;
   letter-spacing: 4rpx;
 }
@@ -78,7 +115,7 @@ onShow(refreshSessionProfile);
 
 .level {
   margin-top: 12rpx;
-  color: rgba(255, 255, 255, 0.78);
+  color: #6f7f8a;
   font-size: 28rpx;
 }
 
@@ -86,12 +123,13 @@ onShow(refreshSessionProfile);
   margin-top: auto;
   border-radius: 28rpx;
   padding: 28rpx;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.62);
 }
 
 .code-title {
   display: block;
-  color: rgba(255, 255, 255, 0.72);
+  color: #7d8792;
   font-size: 24rpx;
 }
 
@@ -150,8 +188,8 @@ onShow(refreshSessionProfile);
 .primary-btn {
   margin-top: 24rpx;
   border-radius: 999rpx;
-  background: #d72d2d;
-  color: #fff;
+  background: #3d4652;
+  color: #f7f4ea;
   font-weight: 800;
 }
 </style>

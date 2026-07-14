@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Component, VNodeChild } from 'vue';
 import {
   NBadge,
@@ -19,6 +19,9 @@ import {
 import type { MenuOption } from 'naive-ui';
 import {
   Activity,
+  Bell,
+  BellRing,
+  ChartNoAxesCombined,
   CalendarDays,
   ChevronsLeft,
   ChevronsRight,
@@ -29,7 +32,8 @@ import {
   Wallet,
   Receipt,
   Layers,
-} from 'lucide-vue-next';
+  PackageSearch,
+} from '@lucide/vue';
 import { useAuth } from '@/composables/useAuth';
 import { useDataStore } from '@/composables/useDataStore';
 
@@ -38,23 +42,41 @@ import LevelsTab from './tabs/LevelsTab.vue';
 import RechargesTab from './tabs/RechargesTab.vue';
 import OrdersTab from './tabs/OrdersTab.vue';
 import AppointmentsTab from './tabs/AppointmentsTab.vue';
+import ProductCatalogsTab from './tabs/ProductCatalogsTab.vue';
 import LogsTab from './tabs/LogsTab.vue';
+import RevenueTab from './tabs/RevenueTab.vue';
 
-type TabKey = 'members' | 'levels' | 'recharges' | 'orders' | 'appointments' | 'logs';
+type TabKey = 'members' | 'levels' | 'catalogs' | 'recharges' | 'orders' | 'revenue' | 'appointments' | 'logs';
 
 const { logout } = useAuth();
-const { loadAll, loading, error, pendingAppointmentCount, pendingRechargeCount } = useDataStore();
+const {
+  appointments,
+  loadAll,
+  refreshAppointments,
+  loading,
+  error,
+  pendingAppointmentCount,
+} = useDataStore();
 const message = useMessage();
 const dialog = useDialog();
 
 const activeKey = ref<TabKey>('members');
 const collapsed = ref(false);
+const reminderEnabled = ref(localStorage.getItem('appointment-reminder-enabled') === 'true');
+const latestReminder = ref<{ id: string; label: string } | null>(null);
+const checkingAppointments = ref(false);
+let knownPendingIds = new Set<string>();
+let reminderReady = false;
+let reminderTimer: number | undefined;
+let audioContext: AudioContext | null = null;
 
 const tabComponents: Record<TabKey, Component> = {
   members: MembersTab,
   levels: LevelsTab,
+  catalogs: ProductCatalogsTab,
   recharges: RechargesTab,
   orders: OrdersTab,
+  revenue: RevenueTab,
   appointments: AppointmentsTab,
   logs: LogsTab,
 };
@@ -62,8 +84,10 @@ const tabComponents: Record<TabKey, Component> = {
 const tabTitles: Record<TabKey, { title: string; desc: string }> = {
   members: { title: '会员管理', desc: '管理会员档案、等级与备注' },
   levels: { title: '等级管理', desc: '调整会员等级门槛与折扣' },
-  recharges: { title: '充值审核', desc: '处理会员充值申请，确认到账' },
+  catalogs: { title: '产品库', desc: '管理美甲、饰品、鲜花展示内容' },
+  recharges: { title: '充值', desc: '为顾客账户充值金额和积分' },
   orders: { title: '消费订单', desc: '查看与录入门店消费明细' },
+  revenue: { title: '营收统计', desc: '按日与月份核对门店营业账目' },
   appointments: { title: '预约排期', desc: '日历视图查看到店预约' },
   logs: { title: '审计日志', desc: '追溯所有后台操作' },
 };
@@ -92,13 +116,10 @@ function rightExtra(count: number | undefined): (() => VNodeChild) | undefined {
 const menuOptions = computed<MenuOption[]>(() => [
   { label: '会员管理', key: 'members', icon: renderIcon(Users) },
   { label: '等级管理', key: 'levels', icon: renderIcon(Layers) },
-  {
-    label: '充值审核',
-    key: 'recharges',
-    icon: renderIcon(Wallet),
-    extra: rightExtra(pendingRechargeCount.value),
-  },
+  { label: '产品库', key: 'catalogs', icon: renderIcon(PackageSearch) },
+  { label: '充值', key: 'recharges', icon: renderIcon(Wallet) },
   { label: '消费订单', key: 'orders', icon: renderIcon(Receipt) },
+  { label: '营收统计', key: 'revenue', icon: renderIcon(ChartNoAxesCombined) },
   {
     label: '预约排期',
     key: 'appointments',
@@ -114,6 +135,103 @@ async function refresh() {
   await loadAll();
   if (!error.value) {
     message.success('数据已刷新', { duration: 1200 });
+  }
+}
+
+async function toggleAppointmentReminder() {
+  if (reminderEnabled.value) {
+    reminderEnabled.value = false;
+    localStorage.removeItem('appointment-reminder-enabled');
+    message.info('新预约提醒已关闭');
+    return;
+  }
+
+  audioContext ||= new AudioContext();
+  void audioContext.resume();
+
+  reminderEnabled.value = true;
+  localStorage.setItem('appointment-reminder-enabled', 'true');
+  message.success('新预约提醒已开启');
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    void Notification.requestPermission().then((permission) => {
+      if (permission !== 'granted') {
+        message.info('系统通知未授权，站内提醒和提示音仍然有效');
+      }
+    });
+  }
+}
+
+async function checkNewAppointments() {
+  if (checkingAppointments.value) return;
+  checkingAppointments.value = true;
+  try {
+    await refreshAppointments();
+    const pending = appointments.value.filter((item) => item.status === 'PENDING');
+    const nextIds = new Set(pending.map((item) => item.id));
+    if (reminderReady && reminderEnabled.value) {
+      pending
+        .filter((item) => !knownPendingIds.has(item.id))
+        .forEach(notifyNewAppointment);
+    }
+    knownPendingIds = nextIds;
+    reminderReady = true;
+  } finally {
+    checkingAppointments.value = false;
+  }
+}
+
+function notifyNewAppointment(item: (typeof appointments.value)[number]) {
+  const businessName = {
+    NAIL: '美甲',
+    ACCESSORY: '饰品',
+    FLOWER: '鲜花',
+  }[item.businessType];
+  const productText = item.productName ? ` · ${item.productName}` : '';
+  const summary = `${businessName}${productText}，${item.appointmentDate} ${item.startTime}`;
+  latestReminder.value = {
+    id: item.id,
+    label: `新预约：${item.memberNickname}`,
+  };
+
+  message.warning(`新预约：${item.memberNickname}，${summary}`, {
+    duration: 10000,
+    closable: true,
+  });
+  playReminderSound();
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification('月光石屿收到新预约', {
+      body: `${item.memberNickname}：${summary}`,
+      tag: item.id,
+    });
+    notification.onclick = () => {
+      window.focus();
+      activeKey.value = 'appointments';
+      notification.close();
+    };
+  }
+}
+
+function openLatestAppointment() {
+  activeKey.value = 'appointments';
+  latestReminder.value = null;
+}
+
+function playReminderSound() {
+  try {
+    audioContext ||= new AudioContext();
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+    gain.gain.setValueAtTime(0.12, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.22);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.22);
+  } catch {
+    // 站内提醒仍然可用。
   }
 }
 
@@ -134,10 +252,27 @@ watch(error, (msg) => {
   if (msg) message.error(msg, { duration: 4000 });
 });
 
-onMounted(loadAll);
+onMounted(async () => {
+  await loadAll();
+  knownPendingIds = new Set(
+    appointments.value.filter((item) => item.status === 'PENDING').map((item) => item.id),
+  );
+  reminderReady = true;
+  reminderTimer = window.setInterval(() => {
+    void checkNewAppointments();
+  }, 10000);
+});
+
+onBeforeUnmount(() => {
+  if (reminderTimer !== undefined) {
+    window.clearInterval(reminderTimer);
+  }
+  void audioContext?.close();
+});
 
 // ICP / 公安备案号（从 .env 读取）
-const icpRecord = import.meta.env.VITE_ICP_RECORD as string | undefined;
+const rawIcpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined)?.trim();
+const icpRecord = rawIcpRecord && !/X{4,}|请填写|示例/i.test(rawIcpRecord) ? rawIcpRecord : undefined;
 const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
 const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string | undefined;
 </script>
@@ -154,10 +289,10 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
       class="admin-sider"
     >
       <div class="sider-brand" :class="{ 'is-collapsed': collapsed }">
-        <div class="brand-mark">初</div>
+        <div class="brand-mark">月</div>
         <transition name="fade">
           <div v-if="!collapsed" class="brand-text">
-            <strong>初屿会员</strong>
+            <strong>月光石屿</strong>
             <small>Admin v1</small>
           </div>
         </transition>
@@ -206,6 +341,32 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
         </div>
 
         <NSpace :size="10" align="center">
+          <NButton
+            v-if="latestReminder"
+            size="small"
+            type="warning"
+            secondary
+            @click="openLatestAppointment"
+          >
+            <template #icon>
+              <NIcon><BellRing /></NIcon>
+            </template>
+            {{ latestReminder.label }}
+          </NButton>
+          <NButton
+            size="small"
+            :type="reminderEnabled ? 'primary' : 'default'"
+            :secondary="reminderEnabled"
+            @click="toggleAppointmentReminder"
+          >
+            <template #icon>
+              <NIcon>
+                <BellRing v-if="reminderEnabled" />
+                <Bell v-else />
+              </NIcon>
+            </template>
+            {{ reminderEnabled ? '提醒已开启' : '预约提醒' }}
+          </NButton>
           <NButton :loading="loading" size="small" secondary @click="refresh">
             <template #icon>
               <NIcon><RefreshCw /></NIcon>
@@ -230,10 +391,10 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
           <footer class="site-footer">
             <span>
               <NIcon style="vertical-align: -3px"><Activity :size="14" /></NIcon>
-              © {{ new Date().getFullYear() }} 初屿会员
+              © {{ new Date().getFullYear() }} 月光石屿
             </span>
-            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer noopener">
-              {{ icpRecord || '皖ICP备2026004340号' }}
+            <a v-if="icpRecord" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer noopener">
+              {{ icpRecord }}
             </a>
             <a
               v-if="publicSecurityRecord"

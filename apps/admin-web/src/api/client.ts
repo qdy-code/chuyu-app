@@ -1,20 +1,31 @@
 import type {
   AuditLog,
   Appointment,
+  AppointmentUnavailableDate,
+  BusinessType,
+  CatalogProduct,
   ConsumptionOrder,
   CreateAdminAppointmentRequest,
+  CreateAppointmentUnavailableDateRequest,
+  AdminRechargeRequest,
+  CreateCatalogProductRequest,
   CreateMemberRequest,
   CreateConsumptionOrderRequest,
   CreateMemberLevelRequest,
+  CreateProductCategoryRequest,
   CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  ProductCategory,
   ProductType,
   RechargeOrder,
+  RevenueOverview,
   RejectRechargeRequest,
   UpdateAppointmentRequest,
+  UpdateCatalogProductRequest,
   UpdateMemberRequest,
   UpdateMemberLevelRequest,
+  UpdateProductCategoryRequest,
   UpdateProductTypeRequest,
 } from '@member-platform/shared';
 
@@ -40,6 +51,12 @@ export async function adminLogin(password: string): Promise<void> {
     body: JSON.stringify({ password }),
   });
   if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('登录尝试过多，请 15 分钟后再试');
+    }
+    if (response.status >= 500) {
+      throw new Error('管理服务暂不可用，请稍后重试');
+    }
     throw new Error('密码错误');
   }
   const data = (await response.json()) as { token: string };
@@ -49,6 +66,64 @@ export async function adminLogin(password: string): Promise<void> {
 function authHeaders(): Record<string, string> {
   const token = getAdminToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function pickBackendMessage(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        return pickBackendMessage(JSON.parse(trimmed));
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+  if (Array.isArray(value)) {
+    return value.map(pickBackendMessage).filter(Boolean).join('；');
+  }
+  if (typeof value === 'object') {
+    const data = value as Record<string, unknown>;
+    return (
+      pickBackendMessage(data.message) ||
+      pickBackendMessage(data.error) ||
+      pickBackendMessage(data.reason) ||
+      pickBackendMessage(data.errMsg)
+    );
+  }
+  return String(value);
+}
+
+export function readableErrorMessage(error: unknown, fallback = '操作失败'): string {
+  const raw = error instanceof Error ? error.message : pickBackendMessage(error);
+  const message = pickBackendMessage(raw) || fallback;
+  const lower = message.toLowerCase();
+
+  if (lower.includes('phone already bound by another member')) return '该手机号已被其他会员使用，请联系门店处理';
+  if (lower.includes('member id or phone already exists')) return '会员ID或手机号已存在';
+  if (lower.includes('member not found')) return '会员不存在';
+  if (lower.includes('product is not available')) return '该产品已下架';
+  if (lower.includes('product not found')) return '产品不存在或已下架';
+  if (lower.includes('appointment time cannot be in the past')) return '不可选择过往时间';
+  if (lower.includes('appointment time slot already booked')) return '该时间已有确认预约';
+  if (lower.includes('appointment not found')) return '预约记录不存在或已删除';
+  if (lower.includes('appointment date has unavailable settings')) return '该日期已有停约设置，请先恢复后再调整';
+  if (lower.includes('invalid appointment date')) return '预约日期格式不正确';
+  if (lower.includes('appointment unavailable date cannot be in the past')) return '不可设置过往日期';
+  if (lower.includes('appointment unavailable date not found')) return '不可预约日期记录不存在或已删除';
+  if (lower.includes('appointment date unavailable')) return '当日预约已满，请选择其他日期';
+  if (lower.includes('consumption order not found')) return '消费订单不存在或已删除';
+  if (lower.includes('invalid revenue month')) return '统计月份格式不正确';
+  if (lower.includes('accessory appointment requires a product')) return '请选择饰品后预约';
+  if (lower.includes('birthday can only be changed once')) return '生日日期只能修改一次';
+  if (lower.includes('account id can only be changed once')) return '账户ID只能修改一次';
+  if (lower.includes('payload too large') || lower.includes('file too large')) return '图片过大，请压缩后重试';
+  if (lower.includes('unsupported file') || lower.includes('invalid file')) return '图片格式不支持';
+  if (lower.includes('failed to fetch')) return '无法连接 API，请确认后端已启动';
+  return message || fallback;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -87,7 +162,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new Error(readableErrorMessage(text, `请求失败：${response.status}`));
   }
   return response.json() as Promise<T>;
 }
@@ -141,7 +216,55 @@ export const api = {
     request<{ success: true }>(`/admin/product-types/${id}`, {
       method: 'DELETE',
     }),
+  listCatalogCategories: (businessType: BusinessType) =>
+    request<ProductCategory[]>(`/admin/catalog/${businessType}/categories`),
+  createCatalogCategory: (businessType: BusinessType, payload: CreateProductCategoryRequest) =>
+    request<ProductCategory>(`/admin/catalog/${businessType}/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  updateCatalogCategory: (businessType: BusinessType, id: string, payload: UpdateProductCategoryRequest) =>
+    request<ProductCategory>(`/admin/catalog/${businessType}/categories/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteCatalogCategory: (businessType: BusinessType, id: string) =>
+    request<{ success: true }>(`/admin/catalog/${businessType}/categories/${id}`, {
+      method: 'DELETE',
+    }),
+  listCatalogProducts: (businessType: BusinessType) =>
+    request<CatalogProduct[]>(`/admin/catalog/${businessType}/products`),
+  createCatalogProduct: (businessType: BusinessType, payload: CreateCatalogProductRequest) =>
+    request<CatalogProduct>(`/admin/catalog/${businessType}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  updateCatalogProduct: (businessType: BusinessType, id: string, payload: UpdateCatalogProductRequest) =>
+    request<CatalogProduct>(`/admin/catalog/${businessType}/products/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteCatalogProduct: (businessType: BusinessType, id: string) =>
+    request<{ success: true }>(`/admin/catalog/${businessType}/products/${id}`, {
+      method: 'DELETE',
+    }),
   listAppointments: () => request<Appointment[]>('/admin/appointments'),
+  listAppointmentUnavailableDates: () =>
+    request<AppointmentUnavailableDate[]>('/admin/appointment-unavailable-dates'),
+  createAppointmentUnavailableDate: (payload: CreateAppointmentUnavailableDateRequest) =>
+    request<AppointmentUnavailableDate>('/admin/appointment-unavailable-dates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  deleteAppointmentUnavailableDate: (id: string) =>
+    request<{ success: true }>(`/admin/appointment-unavailable-dates/${id}`, {
+      method: 'DELETE',
+    }),
   createAppointment: (payload: CreateAdminAppointmentRequest) =>
     request<Appointment>('/admin/appointments', {
       method: 'POST',
@@ -154,7 +277,17 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+  deleteAppointment: (id: string) =>
+    request<{ success: true }>(`/admin/appointments/${id}`, {
+      method: 'DELETE',
+    }),
   listRecharges: () => request<RechargeOrder[]>('/admin/recharges'),
+  createRecharge: (payload: AdminRechargeRequest) =>
+    request<MemberProfile>('/admin/recharges', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
   approveRecharge: (id: string) => request<RechargeOrder>(`/admin/recharges/${id}/approve`, { method: 'POST' }),
   rejectRecharge: (id: string, payload: RejectRechargeRequest) =>
     request<RechargeOrder>(`/admin/recharges/${id}/reject`, {
@@ -173,19 +306,49 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+  deleteConsumptionOrder: (id: string) =>
+    request<{ success: true }>(`/admin/orders/${id}`, {
+      method: 'DELETE',
+    }),
+  getRevenueOverview: (month: string) =>
+    request<RevenueOverview>(`/admin/revenue?month=${encodeURIComponent(month)}`),
   uploadImages: async (files: File[]): Promise<string[]> => {
+    if (files.length === 0) return [];
+    if (files.length > 9) throw new Error('每次最多上传 9 张图片');
+    if (files.some((file) => file.size > 8 * 1024 * 1024)) {
+      throw new Error('单张图片不能超过 8MB');
+    }
     const form = new FormData();
     files.forEach((file) => form.append('files', file));
 
-    const response = await fetch(`${API_BASE}/admin/uploads/images`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: form,
-    });
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 60000);
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/admin/uploads/images`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error('图片上传超时，请压缩后重试');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+
+    if (response.status === 401) {
+      clearAdminToken();
+      window.dispatchEvent(new Event('admin-auth-expired'));
+      throw new Error('登录已过期，请重新登录');
+    }
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || `Upload failed: ${response.status}`);
+      throw new Error(readableErrorMessage(text, `上传失败：${response.status}`));
     }
 
     const result = (await response.json()) as { urls: string[] };
@@ -194,6 +357,7 @@ export const api = {
 };
 
 export function toAbsoluteImageUrl(relativeUrl: string): string {
+  if (!relativeUrl) return '';
   if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
     return relativeUrl;
   }

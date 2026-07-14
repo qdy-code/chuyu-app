@@ -1,6 +1,10 @@
 import { resolve } from 'node:path';
 
 export function getUploadDir(): string {
+  const configured = process.env.UPLOAD_DIR?.trim();
+  if (configured) {
+    return resolve(configured);
+  }
   const cwd = process.cwd().replace(/\\/g, '/');
   if (cwd.endsWith('/apps/api')) {
     return resolve(process.cwd(), 'uploads');

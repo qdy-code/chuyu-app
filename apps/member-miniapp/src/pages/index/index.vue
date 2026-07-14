@@ -1,81 +1,112 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="top-bar">
-      <view>
-        <text class="brand">初屿会员</text>
-        <text class="hello">{{ welcomeText }}</text>
+      <view class="brand-lockup" @click="openAccountFromHeader">
+        <image class="brand-mark" :src="headerAvatarSrc" mode="aspectFill" />
+        <view>
+          <text class="brand">月光石屿 MOONOISLE</text>
+          <text class="hello">{{ welcomeText }}</text>
+        </view>
       </view>
-      <button v-if="sessionState.userId" class="account-chip" @click="openAccount">账户</button>
     </view>
 
-    <view v-if="!sessionState.userId" class="register-card">
-      <view class="register-copy">
-        <text class="register-kicker">会员中心</text>
-        <text class="register-title">{{ loggingIn ? '正在为你准备会员档案…' : '点击下方按钮进入会员中心' }}</text>
-        <text class="register-desc">使用微信账号一键进入，无需填写手机号即可享受会员折扣、预约和消费记录服务。</text>
+    <view v-if="!sessionState.userId" class="entry-card">
+      <text class="entry-kicker">会员登录</text>
+      <text class="entry-title">进入我的账户</text>
+      <text class="entry-desc">登录后可查看会员卡、余额积分、消费记录和预约记录。</text>
+      <view class="legal-consent">
+        <checkbox-group @change="handleLegalConsentChange">
+          <label class="consent-label">
+            <checkbox value="accepted" :checked="legalAccepted" color="#3d4652" />
+            <text>我已阅读并同意</text>
+          </label>
+        </checkbox-group>
+        <view class="legal-links">
+          <text class="legal-link" @click.stop="openTerms">《用户协议》</text>
+          <text>与</text>
+          <text class="legal-link" @click.stop="openPrivacy">《隐私政策》</text>
+        </view>
       </view>
-      <button class="register-btn" :disabled="loggingIn" @click="handleEnter">
-        {{ loggingIn ? '进入中...' : '进入会员中心' }}
+      <button class="primary-btn" :disabled="loggingIn || !legalAccepted" @click="handleEnter">
+        {{ loggingIn ? '登录中...' : '微信登录' }}
       </button>
-      <view class="legal-hint">
-        <text>进入即表示同意</text>
-        <text class="legal-link" @click="openTerms">《用户协议》</text>
-        <text>与</text>
-        <text class="legal-link" @click="openPrivacy">《隐私政策》</text>
-      </view>
     </view>
 
-    <view class="hero-card" @click="openPage('/pages/card/card')">
-      <view class="hero-left">
-        <text class="hero-label">我的会员卡</text>
-        <text class="hero-title">{{ sessionState.profile?.levelName || '初屿会员' }}</text>
-        <text v-if="sessionState.profile" class="hero-desc">ID：{{ sessionState.profile.id }}</text>
-        <text v-else class="hero-desc">登录后自动生成会员档案</text>
+    <view v-else-if="!legalAccepted" class="entry-card">
+      <text class="entry-kicker">协议更新</text>
+      <text class="entry-title">确认隐私与服务条款</text>
+      <text class="entry-desc">继续使用前，请阅读并确认最新的隐私政策和用户协议。</text>
+      <view class="legal-consent">
+        <view class="legal-links">
+          <text class="legal-link" @click="openTerms">《用户协议》</text>
+          <text>与</text>
+          <text class="legal-link" @click="openPrivacy">《隐私政策》</text>
+        </view>
       </view>
-      <view class="hero-badge">
-        <text class="badge-value">{{ sessionState.profile ? discountText(sessionState.profile.discountRate) : 'JOIN' }}</text>
-        <text class="badge-label">会员折扣</text>
-      </view>
+      <button class="primary-btn" @click="acceptLegalTerms">同意并继续</button>
     </view>
 
-    <view class="stats-card" v-if="sessionState.profile">
-      <view class="stat">
-        <text class="stat-value">¥{{ formatMoney(sessionState.profile.balance) }}</text>
-        <text class="stat-label">余额</text>
+    <view v-else-if="needsPhoneSetup" class="entry-card">
+      <text class="entry-kicker">首次使用</text>
+      <text class="entry-title">填写手机号</text>
+      <text class="entry-desc">只需要填写手机号，方便门店确认预约和会员资料。</text>
+      <view class="phone-field">
+        <text class="field-label">手机号</text>
+        <input
+          v-model="phoneInput"
+          class="phone-input"
+          type="number"
+          maxlength="11"
+          placeholder="请输入 11 位手机号"
+        />
       </view>
-      <view class="divider" />
-      <view class="stat">
-        <text class="stat-value">{{ sessionState.profile.points }}</text>
-        <text class="stat-label">积分</text>
-      </view>
-      <view class="divider" />
-      <view class="stat">
-        <text class="stat-value">{{ sessionState.profile.levelName || '会员' }}</text>
-        <text class="stat-label">等级</text>
-      </view>
+      <button class="primary-btn" :disabled="savingPhone" @click="submitPhone">
+        {{ savingPhone ? '保存中...' : '完成并进入' }}
+      </button>
     </view>
 
-    <view class="section">
-      <text class="section-title">常用服务</text>
-      <view class="module-grid">
-        <view class="module module-card" @click="openPage('/pages/card/card')">
-          <text class="module-icon">👑</text>
-          <text class="module-title">会员卡</text>
+    <template v-else>
+      <view class="member-card" @click="openPage('/pages/card/card')">
+        <image class="card-bg" src="/static/brand/member-card-bg.jpg" mode="aspectFill" />
+        <view class="member-main">
+          <text class="card-label">我的会员卡</text>
+          <text class="card-title">{{ sessionState.profile?.levelName || '会员' }}</text>
+          <text class="card-desc">会员号：{{ sessionState.profile?.id }}</text>
         </view>
-        <view class="module module-orders" @click="openPage('/pages/consumptions/consumptions')">
-          <text class="module-icon">🧾</text>
-          <text class="module-title">消费记录</text>
-        </view>
-        <view class="module module-appointment" @click="openPage('/pages/appointment/appointment')">
-          <text class="module-icon">📅</text>
-          <text class="module-title">预约到店</text>
-        </view>
-        <view class="module module-account" @click="openAccount">
-          <text class="module-icon">👤</text>
-          <text class="module-title">账户资料</text>
+        <view class="discount-badge">
+          <text class="discount-value">{{ discountText(sessionState.profile?.discountRate) }}</text>
+          <text class="discount-label">会员折扣</text>
         </view>
       </view>
-    </view>
+
+      <view class="stats-card">
+        <view class="stat">
+          <text class="stat-value">¥{{ formatMoney(sessionState.profile?.balance) }}</text>
+          <text class="stat-label">余额</text>
+        </view>
+        <view class="divider" />
+        <view class="stat">
+          <text class="stat-value">{{ sessionState.profile?.points || 0 }}</text>
+          <text class="stat-label">积分</text>
+        </view>
+        <view class="divider" />
+        <view class="stat">
+          <text class="stat-value">{{ sessionState.profile?.phone || '-' }}</text>
+          <text class="stat-label">手机号</text>
+        </view>
+      </view>
+
+      <view class="section">
+        <text class="section-title">我的服务</text>
+        <view class="service-grid">
+          <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>
+          <button class="service-item" @click="openPage('/pages/consumptions/consumptions')">消费记录</button>
+          <button class="service-item" @click="openPage('/pages/recharge/recharge')">充值记录</button>
+          <button class="service-item" @click="openPage('/pages/account/account')">账户资料</button>
+        </view>
+      </view>
+    </template>
   </view>
 </template>
 
@@ -83,38 +114,91 @@
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState } from '@/store/session';
-import { discountText, ensureSession, formatMoney, refreshSessionProfile, requireLogin } from '@/utils/member';
+import { readableErrorMessage, updateMyProfile } from '@/utils/api';
+import { resolveImageForDisplay } from '@/utils/image-cache';
+import { discountText, ensureSession, formatMoney, refreshSessionProfile, requireReadyMember } from '@/utils/member';
 
 const loggingIn = ref(false);
+const savingPhone = ref(false);
+const phoneInput = ref('');
+const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
+const LEGAL_CONSENT_VERSION = '2026-07-12';
+const legalAccepted = ref(uni.getStorageSync('member-miniapp-legal-consent') === LEGAL_CONSENT_VERSION);
 
-const welcomeText = computed(() => sessionState.profile?.nickname || '会员中心');
+const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
+const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
 
 async function handleEnter() {
   if (loggingIn.value) return;
+  if (!legalAccepted.value) {
+    uni.showToast({ title: '请先阅读并同意协议', icon: 'none' });
+    return;
+  }
   loggingIn.value = true;
   try {
-    const ok = await ensureSession();
-    if (!ok) {
-      uni.showToast({ title: '登录失败，请重试', icon: 'none' });
-    }
+    await ensureSession();
+    phoneInput.value = sessionState.profile?.phone || '';
   } catch (error) {
-    uni.showToast({ title: errorMessage(error), icon: 'none' });
+    console.error('[member login failed]', error);
+    uni.showToast({ title: readableErrorMessage(error, '登录未完成').slice(0, 18), icon: 'none' });
   } finally {
     loggingIn.value = false;
   }
 }
 
-function openPage(url: string) {
-  if (!requireLogin()) {
+function handleLegalConsentChange(event: { detail: { value: string[] } }) {
+  legalAccepted.value = event.detail.value.includes('accepted');
+  if (legalAccepted.value) {
+    uni.setStorageSync('member-miniapp-legal-consent', LEGAL_CONSENT_VERSION);
+  } else {
+    uni.removeStorageSync('member-miniapp-legal-consent');
+  }
+}
+
+function acceptLegalTerms() {
+  legalAccepted.value = true;
+  uni.setStorageSync('member-miniapp-legal-consent', LEGAL_CONSENT_VERSION);
+}
+
+async function submitPhone() {
+  const phone = phoneInput.value.trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) {
+    uni.showToast({ title: '请输入正确手机号', icon: 'none' });
     return;
   }
+  savingPhone.value = true;
+  try {
+    await updateMyProfile({ phone });
+    await refreshSessionProfile();
+    uni.showToast({ title: '已完成', icon: 'success' });
+  } catch (error) {
+    const message = readableErrorMessage(error, '保存失败');
+    if (message.includes('手机号已被其他会员使用')) {
+      uni.showModal({
+        title: '手机号已使用',
+        content: message,
+        showCancel: false,
+        confirmText: '知道了',
+      });
+    } else {
+      uni.showToast({ title: message.slice(0, 18), icon: 'none' });
+    }
+  } finally {
+    savingPhone.value = false;
+  }
+}
+
+function openPage(url: string) {
+  if (!requireReadyMember()) return;
   uni.navigateTo({ url });
 }
 
-function openAccount() {
-  if (!requireLogin()) {
+async function openAccountFromHeader() {
+  if (!sessionState.userId) {
+    await handleEnter();
     return;
   }
+  if (!requireReadyMember()) return;
   uni.navigateTo({ url: '/pages/account/account' });
 }
 
@@ -126,154 +210,227 @@ function openTerms() {
   uni.navigateTo({ url: '/pages/legal/terms' });
 }
 
-function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : '登录失败';
-  if (message.includes('url not in domain list')) return '接口域名未配置';
-  if (message.includes('request:fail')) return '网络请求失败';
-  if (message.includes('invalid code') || message.includes('40029') || message.includes('Internal server error') || message.includes('500')) {
-    return '登录票据已过期，请重试';
-  }
-  return message.slice(0, 18) || '登录失败';
-}
-
-onShow(() => {
-  // 只恢复本机缓存的登录态，不主动发起 wx.login。
-  // 用户点"进入会员中心"按钮时才走 ensureSession，避免退出登录后立刻被自动登回。
-  refreshSessionProfile();
+onShow(async () => {
+  await refreshSessionProfile();
+  phoneInput.value = sessionState.profile?.phone || phoneInput.value;
+  headerAvatarSrc.value = await resolveImageForDisplay(
+    sessionState.profile?.avatarUrl,
+    '/static/brand/logo-avatar-v2.png',
+  );
 });
 </script>
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
-  padding: 32rpx 24rpx;
-  background: linear-gradient(180deg, #fff6ef 0%, #f7f4ef 38%, #f7f7f7 100%);
+  padding: 32rpx 24rpx 48rpx;
+  background: #f7f4ef;
+}
+
+.page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.top-bar,
+.entry-card,
+.member-card,
+.stats-card,
+.section {
+  position: relative;
+  z-index: 1;
+}
+
+.top-bar,
+.brand-lockup {
+  display: flex;
+  align-items: center;
 }
 
 .top-bar {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 24rpx;
+}
+
+.brand-lockup {
+  gap: 18rpx;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 82rpx;
+  height: 82rpx;
+  flex: 0 0 82rpx;
+  border-radius: 50%;
+  box-shadow: 0 12rpx 30rpx rgba(18, 24, 38, 0.16);
+}
+
+.brand,
+.hello {
+  display: block;
 }
 
 .brand {
-  display: block;
-  color: #c52424;
+  color: #273247;
   font-size: 28rpx;
   font-weight: 800;
 }
 
 .hello {
-  display: block;
   margin-top: 8rpx;
-  color: #1f2937;
+  color: #111827;
   font-size: 38rpx;
   font-weight: 900;
 }
 
-.account-chip {
-  margin: 0;
-  min-width: 132rpx;
-  border-radius: 999rpx;
-  background: #fff;
-  color: #9b1717;
-  font-size: 26rpx;
-  font-weight: 800;
-  box-shadow: 0 10rpx 30rpx rgba(31, 41, 55, 0.08);
-}
-
-.register-card {
+.entry-card,
+.section,
+.stats-card {
   margin-top: 30rpx;
-  border-radius: 36rpx;
+  border-radius: 32rpx;
   padding: 34rpx;
-  background: #fff;
-  box-shadow: 0 20rpx 60rpx rgba(197, 36, 36, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18rpx 54rpx rgba(31, 41, 55, 0.08);
 }
 
-.register-kicker {
-  display: block;
-  color: #c52424;
-  font-size: 24rpx;
+.entry-kicker {
+  color: #72818d;
+  font-size: 23rpx;
   font-weight: 900;
 }
 
-.register-title {
+.entry-title {
   display: block;
-  margin-top: 10rpx;
+  margin-top: 12rpx;
   color: #111827;
-  font-size: 40rpx;
+  font-size: 44rpx;
   font-weight: 900;
-  line-height: 1.25;
 }
 
-.register-desc {
+.entry-desc {
   display: block;
   margin-top: 14rpx;
   color: #667085;
-  font-size: 26rpx;
+  font-size: 27rpx;
   line-height: 1.55;
 }
 
-.register-btn {
-  margin-top: 30rpx;
-  border-radius: 999rpx;
-  background: #d72d2d;
-  color: #fff;
+.phone-field {
+  margin-top: 28rpx;
+  border-radius: 24rpx;
+  padding: 22rpx;
+  background: #f8fafc;
+}
+
+.field-label,
+.phone-input {
+  display: block;
+}
+
+.field-label {
+  color: #667085;
+  font-size: 23rpx;
   font-weight: 900;
 }
 
-.legal-hint {
-  margin-top: 22rpx;
+.phone-input {
+  margin-top: 10rpx;
+  width: 100%;
+  color: #111827;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.primary-btn {
+  margin-top: 30rpx;
+  border-radius: 999rpx;
+  background: #3d4652;
+  color: #f7f4ef;
+  font-weight: 900;
+}
+
+.legal-consent,
+.legal-links,
+.consent-label {
   display: flex;
+  align-items: center;
+}
+
+.legal-consent {
+  margin-top: 22rpx;
   flex-wrap: wrap;
   justify-content: center;
-  align-items: center;
-  gap: 4rpx;
-  font-size: 22rpx;
+  gap: 8rpx;
   color: #98a2b3;
-  line-height: 1.6;
+  font-size: 22rpx;
 }
 
-.legal-hint .legal-link {
-  color: #cf2c2c;
+.consent-label,
+.legal-links {
+  gap: 4rpx;
 }
 
-.hero-card {
+.consent-label checkbox {
+  transform: scale(0.78);
+}
+
+.legal-link {
+  color: #6f7f8a;
+}
+
+.member-card {
+  overflow: hidden;
   margin-top: 32rpx;
   min-height: 300rpx;
-  border-radius: 40rpx;
+  border-radius: 36rpx;
   padding: 38rpx;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  background: linear-gradient(135deg, #da2f2f, #8f1414);
-  color: #fff;
-  box-shadow: 0 28rpx 70rpx rgba(197, 36, 36, 0.28);
+  background: #edf2f4;
+  color: #3d4652;
+  box-shadow: 0 28rpx 70rpx rgba(87, 101, 116, 0.16);
 }
 
-.hero-label,
-.hero-desc,
-.badge-label,
+.card-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.96;
+}
+
+.member-main,
+.discount-badge {
+  position: relative;
+  z-index: 1;
+}
+
+.card-label,
+.card-desc,
+.discount-label,
 .stat-label {
   font-size: 24rpx;
   opacity: 0.78;
 }
 
-.hero-title {
+.card-title {
   display: block;
   margin-top: 18rpx;
   font-size: 44rpx;
   font-weight: 900;
 }
 
-.hero-desc {
+.card-desc {
   display: block;
   margin-top: 18rpx;
-  max-width: 440rpx;
 }
 
-.hero-badge {
+.discount-badge {
   width: 148rpx;
   height: 148rpx;
   border-radius: 50%;
@@ -281,40 +438,32 @@ onShow(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: rgba(255, 244, 215, 0.16);
-  border: 1px solid rgba(255, 244, 215, 0.28);
+  background: rgba(255, 255, 255, 0.42);
 }
 
-.badge-value {
-  font-size: 32rpx;
+.discount-value {
+  font-size: 30rpx;
   font-weight: 900;
-  color: #ffe1a6;
-}
-
-.stats-card,
-.section {
-  margin-top: 24rpx;
-  border-radius: 30rpx;
-  padding: 28rpx;
-  background: #fff;
-  box-shadow: 0 12rpx 38rpx rgba(31, 41, 55, 0.06);
 }
 
 .stats-card {
   display: flex;
-  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
 }
 
 .stat {
   flex: 1;
+  min-width: 0;
   text-align: center;
 }
 
 .stat-value {
   display: block;
   color: #111827;
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 900;
+  word-break: break-all;
 }
 
 .stat-label {
@@ -325,57 +474,29 @@ onShow(() => {
 
 .divider {
   width: 1px;
-  height: 56rpx;
-  background: #edf0f3;
+  background: #edf2f4;
 }
 
 .section-title {
   display: block;
   color: #111827;
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 900;
 }
 
-.module-grid {
-  margin-top: 22rpx;
+.service-grid {
+  margin-top: 20rpx;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 18rpx;
 }
 
-.module {
-  min-height: 168rpx;
-  border-radius: 28rpx;
-  padding: 24rpx;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.module-icon {
-  font-size: 40rpx;
-}
-
-.module-title {
-  margin-top: 12rpx;
-  color: #111827;
-  font-size: 30rpx;
+.service-item {
+  margin: 0;
+  border-radius: 24rpx;
+  background: #f8fafc;
+  color: #3d4652;
+  font-size: 27rpx;
   font-weight: 900;
-}
-
-.module-card {
-  background: #fff3e0;
-}
-
-.module-orders {
-  background: #eef6ff;
-}
-
-.module-appointment {
-  background: #fff7ed;
-}
-
-.module-account {
-  background: #eef8f2;
 }
 </style>

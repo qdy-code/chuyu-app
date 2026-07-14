@@ -20,6 +20,7 @@ model Member {
   discountRate Float
   balance      Float
   points       Float
+  accountIdChangedAt DateTime?
 
   @@index([levelId])
 }
@@ -72,10 +73,98 @@ model ProductType {
   @@index([sortOrder])
 }
 
+model NailCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model AccessoryCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model FlowerCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model NailProduct {
+  id             String   @id
+  categoryId     String?
+  categoryName   String?
+  name           String
+  description    String?
+  referencePrice Float?
+  images         String[] @default([])
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+model AccessoryProduct {
+  id                    String   @id
+  categoryId            String?
+  categoryName          String?
+  name                  String
+  description           String?
+  referencePrice        Float?
+  images                String[] @default([])
+  sortOrder             Int      @default(0)
+  isActive              Boolean  @default(true)
+  reservedByUserId      String?
+  reservedAppointmentId String?
+  reservedAt            DateTime?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@index([reservedByUserId])
+}
+
+model FlowerProduct {
+  id             String   @id
+  categoryId     String?
+  categoryName   String?
+  name           String
+  description    String?
+  referencePrice Float?
+  images         String[] @default([])
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
 model Appointment {
   id              String   @id
   userId          String
   memberNickname  String
+  businessType    String   @default("NAIL")
+  productId       String?
+  productName     String?
   appointmentDate String
   startTime       String
   endTime         String
@@ -86,8 +175,23 @@ model Appointment {
   updatedAt       DateTime
 
   @@index([userId])
+  @@index([businessType])
+  @@index([productId])
   @@index([appointmentDate])
   @@index([status])
+}
+
+model AppointmentUnavailableDate {
+  id              String   @id
+  appointmentDate String
+  businessType    String
+  reason          String?
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  @@unique([appointmentDate, businessType])
+  @@index([appointmentDate])
+  @@index([businessType])
 }
 
 model BalanceLedger {

@@ -19,7 +19,7 @@ export default defineConfig({
         manualChunks: {
           vue: ['vue'],
           naive: ['naive-ui'],
-          icons: ['lucide-vue-next'],
+          icons: ['@lucide/vue'],
         },
       },
     },

@@ -1,10 +1,13 @@
 import { computed, ref } from 'vue';
+import { BUSINESS_TYPE } from '@member-platform/shared';
 import type {
   Appointment,
   AuditLog,
+  CatalogProduct,
   ConsumptionOrder,
   MemberLevel,
   MemberProfile,
+  ProductCategory,
   ProductType,
   RechargeOrder,
 } from '@member-platform/shared';
@@ -13,6 +16,8 @@ import { api } from '@/api/client';
 const members = ref<MemberProfile[]>([]);
 const levels = ref<MemberLevel[]>([]);
 const productTypes = ref<ProductType[]>([]);
+const productCategories = ref<ProductCategory[]>([]);
+const catalogProducts = ref<CatalogProduct[]>([]);
 const recharges = ref<RechargeOrder[]>([]);
 const orders = ref<ConsumptionOrder[]>([]);
 const appointments = ref<Appointment[]>([]);
@@ -29,6 +34,12 @@ async function loadAll(): Promise<void> {
       memberList,
       levelList,
       productTypeList,
+      nailCategoryList,
+      accessoryCategoryList,
+      flowerCategoryList,
+      nailProductList,
+      accessoryProductList,
+      flowerProductList,
       rechargeList,
       orderList,
       appointmentList,
@@ -37,6 +48,12 @@ async function loadAll(): Promise<void> {
       api.listMembers(),
       api.listLevels(),
       api.listProductTypes(),
+      api.listCatalogCategories(BUSINESS_TYPE.NAIL),
+      api.listCatalogCategories(BUSINESS_TYPE.ACCESSORY),
+      api.listCatalogCategories(BUSINESS_TYPE.FLOWER),
+      api.listCatalogProducts(BUSINESS_TYPE.NAIL),
+      api.listCatalogProducts(BUSINESS_TYPE.ACCESSORY),
+      api.listCatalogProducts(BUSINESS_TYPE.FLOWER),
       api.listRecharges(),
       api.listConsumptionOrders(),
       api.listAppointments(),
@@ -45,6 +62,8 @@ async function loadAll(): Promise<void> {
     members.value = memberList;
     levels.value = levelList;
     productTypes.value = productTypeList;
+    productCategories.value = [...nailCategoryList, ...accessoryCategoryList, ...flowerCategoryList];
+    catalogProducts.value = [...nailProductList, ...accessoryProductList, ...flowerProductList];
     recharges.value = rechargeList;
     orders.value = orderList;
     appointments.value = appointmentList;
@@ -53,6 +72,14 @@ async function loadAll(): Promise<void> {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
+  }
+}
+
+async function refreshAppointments(): Promise<void> {
+  try {
+    appointments.value = await api.listAppointments();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
   }
 }
 
@@ -77,6 +104,8 @@ export function useDataStore() {
     members,
     levels,
     productTypes,
+    productCategories,
+    catalogProducts,
     recharges,
     orders,
     appointments,
@@ -84,6 +113,7 @@ export function useDataStore() {
     loading,
     error,
     loadAll,
+    refreshAppointments,
     pendingAppointmentCount,
     pendingRechargeCount,
     levelUsageCounts,

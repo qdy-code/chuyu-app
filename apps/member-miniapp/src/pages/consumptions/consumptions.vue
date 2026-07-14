@@ -1,6 +1,8 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
+      <image class="header-bg" src="/static/brand/consumption-record-bg.jpg" mode="aspectFill" />
       <text class="header-title">消费记录</text>
     </view>
 
@@ -66,9 +68,26 @@ onShow(refresh);
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .header-card,
@@ -81,8 +100,23 @@ onShow(refresh);
 }
 
 .header-card {
-  background: linear-gradient(135deg, #1f2937, #475467);
-  color: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 168rpx;
+  background: #edf2f4;
+  color: #3d4652;
+}
+
+.header-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.header-title {
+  position: relative;
+  z-index: 1;
 }
 
 .header-title,
@@ -123,7 +157,7 @@ onShow(refresh);
 }
 
 .price {
-  color: #cf2c2c;
+  color: #3d4652;
   font-size: 32rpx;
   font-weight: 900;
 }
