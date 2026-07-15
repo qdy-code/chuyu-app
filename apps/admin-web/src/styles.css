@@ -39,6 +39,21 @@ img {
   font-feature-settings: 'tnum';
 }
 
+.sticky-header-card > .n-card-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 6px 12px -12px rgba(31, 29, 27, 0.4);
+}
+
+.sticky-toolbar-card {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
 /* 备案页脚 */
 .site-footer {
   margin-top: 24px;

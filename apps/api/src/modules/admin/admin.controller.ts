@@ -104,6 +104,23 @@ export class AdminController {
     return result.member;
   }
 
+  @Delete('members/:id')
+  async deleteMember(
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Param('id') id: string,
+  ): Promise<{ success: true }> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const effectiveAdminId = adminId || admins[0]?.id || 'admin-unknown';
+    const result = await this.store.deleteMember(id, effectiveAdminId);
+    if (!result.success) {
+      if (result.reason === 'member not found') {
+        throw new NotFoundException(result.reason);
+      }
+      throw new BadRequestException(result.reason || 'failed to delete member');
+    }
+    return { success: true };
+  }
+
   @Get('members/:id/consumptions')
   async listMemberConsumption(@Param('id') id: string): Promise<ConsumptionOrder[]> {
     const member = await this.store.getMemberById(id);

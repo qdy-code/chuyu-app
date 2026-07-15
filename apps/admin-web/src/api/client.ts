@@ -105,6 +105,9 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('phone already bound by another member')) return '该手机号已被其他会员使用，请联系门店处理';
   if (lower.includes('member id or phone already exists')) return '会员ID或手机号已存在';
   if (lower.includes('member not found')) return '会员不存在';
+  if (lower.includes('member has remaining assets')) return '该会员仍有余额或积分，请先处理账户资产';
+  if (lower.includes('member has active appointments')) return '该会员仍有待处理或已确认预约，请先处理预约';
+  if (lower.includes('member has pending recharge')) return '该会员仍有待处理充值，请先处理充值记录';
   if (lower.includes('product is not available')) return '该产品已下架';
   if (lower.includes('product not found')) return '产品不存在或已下架';
   if (lower.includes('appointment time cannot be in the past')) return '不可选择过往时间';
@@ -181,6 +184,10 @@ export const api = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+    }),
+  deleteMember: (id: string) =>
+    request<{ success: true }>(`/admin/members/${id}`, {
+      method: 'DELETE',
     }),
   listLevels: () => request<MemberLevel[]>('/admin/member-levels'),
   createLevel: (payload: CreateMemberLevelRequest) =>

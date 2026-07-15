@@ -253,14 +253,14 @@ async function submitUnavailableDate() {
 
 function confirmRestoreDate(item: AppointmentUnavailableDate) {
   dialog.warning({
-    title: '恢复顾客预约',
-    content: `确定恢复 ${item.appointmentDate} 的${availabilityScopeText(item.businessType)}预约吗？`,
-    positiveText: '恢复预约',
+    title: '取消停止预约',
+    content: `确定取消 ${item.appointmentDate} 的${availabilityScopeText(item.businessType)}停约设置吗？取消后顾客可重新提交预约。`,
+    positiveText: '取消停约',
     negativeText: '取消',
     onPositiveClick: async () => {
       try {
         await api.deleteAppointmentUnavailableDate(item.id);
-        message.success('该日期已恢复预约');
+        message.success('已取消停约，顾客可重新预约');
         await loadUnavailableDates();
       } catch (error) {
         message.error(error instanceof Error ? error.message : '恢复失败');
@@ -449,7 +449,7 @@ onMounted(loadUnavailableDates);
 
 <template>
   <NSpace vertical :size="20">
-    <NCard :bordered="false" class="surface">
+    <NCard :bordered="false" class="surface sticky-header-card">
       <template #header>
         <div class="card-header">
           <span>预约排期表</span>
@@ -531,7 +531,7 @@ onMounted(loadUnavailableDates);
           </div>
           <NButton size="small" type="success" secondary @click="confirmRestoreDate(item)">
             <template #icon><NIcon><RotateCcw /></NIcon></template>
-            恢复预约
+            取消停约
           </NButton>
         </div>
       </div>
@@ -548,7 +548,12 @@ onMounted(loadUnavailableDates);
     >
       <template #header-extra>
         <NSpace :size="8">
-          <NButton size="small" secondary @click="openUnavailableDateModal(selectedDate)">
+          <NButton
+            v-if="!unavailableByDate[selectedDate]?.length"
+            size="small"
+            secondary
+            @click="openUnavailableDateModal(selectedDate)"
+          >
             <template #icon><NIcon><CalendarOff /></NIcon></template>
             停止顾客预约
           </NButton>
@@ -567,7 +572,24 @@ onMounted(loadUnavailableDates);
         :bordered="false"
         style="margin-bottom: 14px"
       >
-        顾客端已暂停：{{ unavailableByDate[selectedDate].map((item) => availabilityScopeText(item.businessType)).join('、') }}
+        <div class="selected-unavailable">
+          <span>
+            顾客端已暂停：{{ unavailableByDate[selectedDate].map((item) => availabilityScopeText(item.businessType)).join('、') }}
+          </span>
+          <NSpace :size="8">
+            <NButton
+              v-for="item in unavailableByDate[selectedDate]"
+              :key="item.id"
+              size="tiny"
+              type="success"
+              secondary
+              @click="confirmRestoreDate(item)"
+            >
+              <template #icon><NIcon><RotateCcw /></NIcon></template>
+              取消{{ availabilityScopeText(item.businessType) }}停约
+            </NButton>
+          </NSpace>
+        </div>
       </NAlert>
 
       <NEmpty v-if="!selectedDateAppointments.length" description="当日没有预约" />
@@ -909,6 +931,14 @@ onMounted(loadUnavailableDates);
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.selected-unavailable {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
 }
 

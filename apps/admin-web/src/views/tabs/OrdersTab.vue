@@ -266,7 +266,7 @@ const columns = computed<DataTableColumns<ConsumptionOrder>>(() => [
 
 <template>
   <NSpace vertical :size="20">
-    <NCard :bordered="false" class="surface">
+    <NCard :bordered="false" class="surface sticky-header-card">
       <template #header>
         <div class="card-header">
           <span>用户消费记录（{{ filteredOrders.length }}）</span>

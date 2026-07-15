@@ -244,7 +244,7 @@ watch(activeBusiness, () => {
 
 <template>
   <NSpace vertical :size="20">
-    <NCard :bordered="false" class="surface">
+    <NCard :bordered="false" class="surface sticky-header-card">
       <template #header>
         <div class="card-header">
           <span>产品库</span>

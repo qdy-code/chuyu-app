@@ -333,7 +333,7 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
       </div>
     </NLayoutSider>
 
-    <NLayout class="admin-main">
+    <NLayout class="admin-main" content-style="display: flex; flex-direction: column; height: 100%;">
       <NLayoutHeader bordered class="admin-header">
         <div class="header-title">
           <h1>{{ currentMeta.title }}</h1>
@@ -413,10 +413,14 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
 
 <style scoped>
 .admin-layout {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-sider {
+  height: 100%;
   background: #fff;
   display: flex;
   flex-direction: column;
@@ -491,6 +495,8 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
 }
 
 .admin-header {
+  flex: 0 0 auto;
+  z-index: 10;
   padding: 16px 28px;
   display: flex;
   justify-content: space-between;
@@ -514,10 +520,18 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
 }
 
 .admin-content {
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--color-bg);
 }
 
+.admin-main {
+  height: 100%;
+  min-width: 0;
+}
+
 .content-inner {
+  min-width: 0;
   padding: 24px 28px 16px;
   max-width: 1480px;
   margin: 0 auto;

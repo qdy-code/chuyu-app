@@ -30,6 +30,44 @@ describeWithTestDatabase('DataStoreService', () => {
     expect(await store.getMemberById(user.id)).toBeDefined();
   });
 
+  it('deletes an empty member while retaining a deletion audit record', async () => {
+    const member = await store.loginByWechat({ code: 'delete-empty-member' });
+
+    const result = await store.deleteMember(member.id, 'admin-001');
+
+    expect(result).toEqual({ success: true });
+    expect(await store.getMemberById(member.id)).toBeUndefined();
+    expect(
+      (await store.listAuditLogs()).some(
+        (log) => log.action === 'member.delete' && log.targetId === member.id,
+      ),
+    ).toBe(true);
+  });
+
+  it('blocks member deletion while assets or active appointments remain', async () => {
+    const member = await store.loginByWechat({ code: 'delete-protected-member' });
+    await store.updateMember(member.id, { balance: 10 });
+
+    expect(await store.deleteMember(member.id, 'admin-001')).toEqual({
+      success: false,
+      reason: 'member has remaining assets',
+    });
+
+    await store.updateMember(member.id, { balance: 0 });
+    await store.createAdminAppointment('admin-001', {
+      userId: member.id,
+      businessType: BUSINESS_TYPE.FLOWER,
+      appointmentDate: '2099-05-10',
+      startTime: '14:00',
+      status: APPOINTMENT_STATUS.CONFIRMED,
+    });
+
+    expect(await store.deleteMember(member.id, 'admin-001')).toEqual({
+      success: false,
+      reason: 'member has active appointments',
+    });
+  });
+
   it('keeps balance ledger consistency during approve flow', async () => {
     const member = (await store.listMembers())[0];
     const previousBalance = member.balance;

@@ -9,6 +9,7 @@ export const auditActionLabels: Record<string, string> = {
   'member.recharge': '后台充值',
   'member.create': '新增会员',
   'member.update': '修改会员资料',
+  'member.delete': '删除会员',
   'member.self.update': '会员自助修改资料',
   'member_level.create': '新增会员等级',
   'member_level.update': '修改会员等级',
@@ -55,6 +56,10 @@ export const auditFieldLabels: Record<string, string> = {
   adminRemark: '后台备注',
   id: '会员 ID',
   changes: '变更明细',
+  appointmentCount: '保留预约记录',
+  rechargeCount: '保留充值记录',
+  consumptionCount: '保留消费记录',
+  ledgerCount: '保留余额流水',
 };
 
 export function getAuditActionLabel(action: string): string {

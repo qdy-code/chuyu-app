@@ -118,7 +118,7 @@ onMounted(loadRevenue);
 
 <template>
   <NSpace vertical :size="20">
-    <NCard :bordered="false" class="surface toolbar-card">
+    <NCard :bordered="false" class="surface toolbar-card sticky-toolbar-card">
       <div class="toolbar-content">
         <div>
           <strong>门店经营账目</strong>

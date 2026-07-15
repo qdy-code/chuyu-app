@@ -17,7 +17,7 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui';
-import { Save, UserPlus, Search } from '@lucide/vue';
+import { Save, Search, Trash2, UserPlus } from '@lucide/vue';
 import type { MemberProfile } from '@member-platform/shared';
 import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
@@ -40,6 +40,7 @@ const dialog = useDialog();
 const keyword = ref('');
 const creating = ref(false);
 const savingId = ref('');
+const deletingId = ref('');
 
 const memberForm = ref({
   id: '',
@@ -172,6 +173,28 @@ async function saveMember(originId: string) {
   } finally {
     savingId.value = '';
   }
+}
+
+function confirmDeleteMember(member: MemberProfile) {
+  dialog.warning({
+    title: '删除会员',
+    content: `确定删除会员“${member.nickname}”（${member.id}）吗？历史消费、充值及已结束预约记录会继续保留用于对账。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      deletingId.value = member.id;
+      try {
+        await api.deleteMember(member.id);
+        delete editRows.value[member.id];
+        message.success('会员已删除，历史业务记录已保留');
+        await loadAll();
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '删除失败');
+      } finally {
+        deletingId.value = '';
+      }
+    },
+  });
 }
 
 function levelTagType(levelId: string): 'default' | 'success' | 'warning' | 'info' {
@@ -324,20 +347,44 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 110,
+    width: 188,
     fixed: 'right',
     render: (row) =>
       h(
-        NButton,
+        NSpace,
+        { size: 8, wrap: false },
         {
-          type: 'primary',
-          size: 'small',
-          loading: savingId.value === row.id,
-          onClick: () => saveMember(row.id),
-        },
-        {
-          icon: () => h(NIcon, null, { default: () => h(Save) }),
-          default: () => '保存',
+          default: () => [
+            h(
+              NButton,
+              {
+                type: 'primary',
+                size: 'small',
+                loading: savingId.value === row.id,
+                disabled: deletingId.value === row.id,
+                onClick: () => saveMember(row.id),
+              },
+              {
+                icon: () => h(NIcon, null, { default: () => h(Save) }),
+                default: () => '保存',
+              },
+            ),
+            h(
+              NButton,
+              {
+                type: 'error',
+                secondary: true,
+                size: 'small',
+                loading: deletingId.value === row.id,
+                disabled: savingId.value === row.id,
+                onClick: () => confirmDeleteMember(row),
+              },
+              {
+                icon: () => h(NIcon, null, { default: () => h(Trash2) }),
+                default: () => '删除',
+              },
+            ),
+          ],
         },
       ),
   },
@@ -401,7 +448,7 @@ function bulkCheckPending() {
       </div>
     </NCard>
 
-    <NCard :bordered="false" class="surface">
+    <NCard :bordered="false" class="surface sticky-header-card">
       <template #header>
         <div class="card-header">
           <span>会员列表（{{ members.length }}）</span>

@@ -1824,6 +1824,72 @@ export class DataStoreService {
     });
   }
 
+  async deleteMember(
+    memberId: string,
+    adminId: string,
+  ): Promise<{ success: boolean; reason?: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.member.findUnique({ where: { id: memberId } });
+      if (!member) {
+        return { success: false, reason: 'member not found' };
+      }
+
+      if (Math.abs(member.balance) > 0.001 || Math.abs(member.points) > 0.001) {
+        return { success: false, reason: 'member has remaining assets' };
+      }
+
+      const [activeAppointmentCount, pendingRechargeCount] = await Promise.all([
+        tx.appointment.count({
+          where: {
+            userId: memberId,
+            status: { in: [APPOINTMENT_STATUS.PENDING, APPOINTMENT_STATUS.CONFIRMED] },
+          },
+        }),
+        tx.rechargeOrder.count({
+          where: {
+            userId: memberId,
+            status: RECHARGE_STATUS.PENDING,
+          },
+        }),
+      ]);
+
+      if (activeAppointmentCount > 0) {
+        return { success: false, reason: 'member has active appointments' };
+      }
+      if (pendingRechargeCount > 0) {
+        return { success: false, reason: 'member has pending recharge' };
+      }
+
+      const [appointmentCount, rechargeCount, consumptionCount, ledgerCount] = await Promise.all([
+        tx.appointment.count({ where: { userId: memberId } }),
+        tx.rechargeOrder.count({ where: { userId: memberId } }),
+        tx.consumptionOrder.count({ where: { userId: memberId } }),
+        tx.balanceLedger.count({ where: { userId: memberId } }),
+      ]);
+
+      await tx.member.delete({ where: { id: memberId } });
+      await this.writeAudit(
+        {
+          actorId: adminId,
+          actorRole: 'ADMIN',
+          action: 'member.delete',
+          targetType: 'member',
+          targetId: memberId,
+          metadata: {
+            nickname: member.nickname,
+            appointmentCount,
+            rechargeCount,
+            consumptionCount,
+            ledgerCount,
+          },
+        },
+        tx,
+      );
+
+      return { success: true };
+    });
+  }
+
   async updateMemberSelf(
     memberId: string,
     payload: UpdateMyProfileRequest,

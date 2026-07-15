@@ -1,12 +1,27 @@
 <script setup lang="ts">
-import { computed, h } from 'vue';
+import { computed, h, ref } from 'vue';
 import type { DataTableColumns } from 'naive-ui';
-import { NCard, NDataTable, NEmpty, NTag } from 'naive-ui';
+import { NButton, NCard, NDataTable, NDatePicker, NEmpty, NSpace, NTag } from 'naive-ui';
 import type { AuditLog } from '@member-platform/shared';
 import { useDataStore } from '@/composables/useDataStore';
 import { formatAuditMetadata, getAuditActionLabel } from '@/composables/useFormatters';
 
 const { logs } = useDataStore();
+const dateRange = ref<[number, number] | null>(null);
+
+function localDateKey(value: number | string | Date): string {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+const filteredLogs = computed(() => {
+  if (!dateRange.value) return logs.value;
+  const [start, end] = dateRange.value.map(localDateKey);
+  return logs.value.filter((log) => {
+    const createdDate = localDateKey(log.createdAt);
+    return createdDate >= start && createdDate <= end;
+  });
+});
 
 function actionType(action: string): 'info' | 'success' | 'warning' | 'error' | 'default' {
   if (action.startsWith('recharge.approve') || action.startsWith('appointment.update')) return 'success';
@@ -17,7 +32,12 @@ function actionType(action: string): 'info' | 'success' | 'warning' | 'error' | 
 }
 
 const columns = computed<DataTableColumns<AuditLog>>(() => [
-  { title: '时间', key: 'createdAt', width: 180, render: (row) => h('span', { class: 'mono dim' }, row.createdAt) },
+  {
+    title: '时间',
+    key: 'createdAt',
+    width: 180,
+    render: (row) => h('span', { class: 'mono dim' }, new Date(row.createdAt).toLocaleString('zh-CN', { hour12: false })),
+  },
   {
     title: '行为',
     key: 'action',
@@ -59,10 +79,26 @@ const columns = computed<DataTableColumns<AuditLog>>(() => [
 </script>
 
 <template>
-  <NCard title="审计日志" :bordered="false" class="surface">
+  <NCard :bordered="false" class="surface sticky-header-card">
+    <template #header>
+      <div class="card-header">
+        <span>审计日志（{{ filteredLogs.length }} / {{ logs.length }}）</span>
+        <NSpace :size="8" align="center">
+          <NDatePicker
+            v-model:value="dateRange"
+            type="daterange"
+            clearable
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            style="width: 300px"
+          />
+          <NButton v-if="dateRange" secondary @click="dateRange = null">清除日期</NButton>
+        </NSpace>
+      </div>
+    </template>
     <NDataTable
       :columns="columns"
-      :data="logs"
+      :data="filteredLogs"
       :bordered="false"
       :scroll-x="1180"
       :single-line="false"
@@ -70,7 +106,7 @@ const columns = computed<DataTableColumns<AuditLog>>(() => [
       striped
     >
       <template #empty>
-        <NEmpty description="暂无日志记录" />
+        <NEmpty :description="dateRange ? '所选日期内暂无日志记录' : '暂无日志记录'" />
       </template>
     </NDataTable>
   </NCard>
@@ -80,6 +116,14 @@ const columns = computed<DataTableColumns<AuditLog>>(() => [
 .surface {
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 8px -2px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 :deep(.mono) {
