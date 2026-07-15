@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -51,6 +52,21 @@ export class MembersController {
   async updateMe(
     @Headers('x-user-id') userId: string | undefined,
     @Body() payload: UpdateMyProfileDto,
+  ): Promise<MemberProfile> {
+    return this.updateMyProfile(userId, payload);
+  }
+
+  @Put('me')
+  async replaceMe(
+    @Headers('x-user-id') userId: string | undefined,
+    @Body() payload: UpdateMyProfileDto,
+  ): Promise<MemberProfile> {
+    return this.updateMyProfile(userId, payload);
+  }
+
+  private async updateMyProfile(
+    userId: string | undefined,
+    payload: UpdateMyProfileDto,
   ): Promise<MemberProfile> {
     if (!userId) {
       throw new NotFoundException('member not found');

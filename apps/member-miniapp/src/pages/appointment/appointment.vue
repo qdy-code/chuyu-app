@@ -195,7 +195,7 @@ import {
   toAbsoluteImageUrl,
 } from '@/utils/api';
 import { sessionState } from '@/store/session';
-import { refreshSessionProfile, requireReadyMember } from '@/utils/member';
+import { ensureReadyMemberAccess, refreshSessionProfile } from '@/utils/member';
 
 type CalendarDay = {
   key: string;
@@ -399,7 +399,7 @@ async function loadUnavailableDates() {
 }
 
 async function openBookingPanel() {
-  if (!requireReadyMember()) return;
+  if (!(await ensureReadyMemberAccess())) return;
   await loadUnavailableDates();
   if (form.value.appointmentDate < today) {
     form.value.appointmentDate = today;
@@ -427,8 +427,8 @@ function closeRecordsPanel() {
   showRecordsPanel.value = false;
 }
 
-function confirmSubmitAppointment() {
-  if (!requireReadyMember()) return;
+async function confirmSubmitAppointment() {
+  if (!(await ensureReadyMemberAccess())) return;
   if (isSelectedDateUnavailable.value) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
     return;

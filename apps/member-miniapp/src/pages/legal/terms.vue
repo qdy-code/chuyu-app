@@ -9,7 +9,7 @@
     <view class="card">
       <text class="section-title">一、协议主体</text>
       <text class="para">
-        本协议是你与"月光石屿 MOONOISLE"小程序（以下简称"本小程序"）运营者之间就使用本小程序服务所达成的协议。
+        本协议是你与"月光石屿MOONISLE"小程序（以下简称"本小程序"）运营者之间就使用本小程序服务所达成的协议。
       </text>
       <text class="para">
         在你使用会员功能前，请仔细阅读本协议。你在登录页主动勾选并点击"微信登录"，表示你已阅读、理解并同意本协议。

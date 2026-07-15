@@ -5,7 +5,7 @@
       <view class="brand-lockup" @click="openAccountFromHeader">
         <image class="brand-mark" :src="headerAvatarSrc" mode="aspectFill" />
         <view>
-          <text class="brand">月光石屿 MOONOISLE</text>
+          <text class="brand">月光石屿MOONISLE</text>
           <text class="hello">{{ welcomeText }}</text>
         </view>
       </view>
@@ -116,14 +116,21 @@ import { onShow } from '@dcloudio/uni-app';
 import { sessionState } from '@/store/session';
 import { readableErrorMessage, updateMyProfile } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
-import { discountText, ensureSession, formatMoney, refreshSessionProfile, requireReadyMember } from '@/utils/member';
+import {
+  discountText,
+  ensureSession,
+  formatMoney,
+  hasLegalConsent,
+  refreshSessionProfile,
+  requireReadyMember,
+  setLegalConsent,
+} from '@/utils/member';
 
 const loggingIn = ref(false);
 const savingPhone = ref(false);
 const phoneInput = ref('');
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
-const LEGAL_CONSENT_VERSION = '2026-07-12';
-const legalAccepted = ref(uni.getStorageSync('member-miniapp-legal-consent') === LEGAL_CONSENT_VERSION);
+const legalAccepted = ref(hasLegalConsent());
 
 const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
@@ -148,16 +155,12 @@ async function handleEnter() {
 
 function handleLegalConsentChange(event: { detail: { value: string[] } }) {
   legalAccepted.value = event.detail.value.includes('accepted');
-  if (legalAccepted.value) {
-    uni.setStorageSync('member-miniapp-legal-consent', LEGAL_CONSENT_VERSION);
-  } else {
-    uni.removeStorageSync('member-miniapp-legal-consent');
-  }
+  setLegalConsent(legalAccepted.value);
 }
 
 function acceptLegalTerms() {
   legalAccepted.value = true;
-  uni.setStorageSync('member-miniapp-legal-consent', LEGAL_CONSENT_VERSION);
+  setLegalConsent(true);
 }
 
 async function submitPhone() {
@@ -211,6 +214,7 @@ function openTerms() {
 }
 
 onShow(async () => {
+  legalAccepted.value = hasLegalConsent();
   await refreshSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
   headerAvatarSrc.value = await resolveImageForDisplay(

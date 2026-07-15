@@ -113,7 +113,7 @@
         <text class="legal-divider">·</text>
         <text class="legal-link" @click="openTerms">用户协议</text>
       </view>
-      <text class="footer-line">© {{ year }} 月光石屿 MOONOISLE</text>
+      <text class="footer-line">© {{ year }} 月光石屿MOONISLE</text>
       <text v-if="icpRecord" class="footer-line">{{ icpRecord }}</text>
       <text v-if="publicSecurityRecord" class="footer-line">{{ publicSecurityRecord }}</text>
     </view>

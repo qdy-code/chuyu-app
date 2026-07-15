@@ -15,15 +15,23 @@ export const sessionState = reactive<SessionState>({
   profile: null,
 });
 
-export function restoreSession(): void {
+export function restoreSession(): boolean {
   const cached = uni.getStorageSync(SESSION_STORAGE_KEY) as Partial<SessionState> | '';
   if (!cached || typeof cached !== 'object') {
-    return;
+    return false;
   }
 
-  sessionState.token = cached.token || '';
-  sessionState.userId = cached.userId || '';
-  sessionState.profile = cached.profile || null;
+  const token = typeof cached.token === 'string' ? cached.token : '';
+  const userId = typeof cached.userId === 'string' ? cached.userId : '';
+  if (!token || !userId) {
+    clearSession();
+    return false;
+  }
+
+  sessionState.token = token;
+  sessionState.userId = userId;
+  sessionState.profile = cached.profile && cached.profile.id === userId ? cached.profile : null;
+  return true;
 }
 
 export function setLoginSession(response: LoginResponse): void {

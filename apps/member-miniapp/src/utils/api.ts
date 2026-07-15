@@ -12,7 +12,7 @@ import type {
   RechargeOrder,
   UpdateMyProfileRequest,
 } from '@member-platform/shared';
-import { sessionState } from '@/store/session';
+import { clearSession, sessionState } from '@/store/session';
 
 const CONFIGURED_API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined);
 const DEVTOOLS_API_BASE = normalizeApiBase(import.meta.env.VITE_DEVTOOLS_API_BASE_URL as string | undefined);
@@ -82,8 +82,21 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('accessory appointment requires a product')) return '请选择饰品后预约';
   if (lower.includes('birthday can only be changed once')) return '生日日期只能修改一次';
   if (lower.includes('account id can only be changed once')) return '账户ID只能修改一次';
-  if (lower.includes('invalid code') || lower.includes('40029') || lower.includes('internal server error')) {
-    return '登录票据已过期，请重试';
+  if (
+    lower.includes('invalid code') ||
+    lower.includes('code been used') ||
+    lower.includes('40029') ||
+    lower.includes('40163')
+  ) {
+    return '微信登录凭证已过期，请重试';
+  }
+  if (
+    lower.includes('invalid appid') ||
+    lower.includes('invalid appsecret') ||
+    lower.includes('40013') ||
+    lower.includes('40125')
+  ) {
+    return '微信登录配置异常，请联系门店';
   }
   if (
     lower.includes('url not in domain list') ||
@@ -99,9 +112,21 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
     lower.includes('bad gateway') ||
     lower.includes('502')
   ) {
-    return '接口连接失败，请检查 API 和 Wi-Fi';
+    return '网络连接不稳定，请稍后重试';
+  }
+  if (lower.includes('internal server error') || lower.includes('请求失败：5')) {
+    return '服务暂时不可用，请稍后重试';
   }
   return message || fallback;
+}
+
+export function isSessionExpiredError(error: unknown): boolean {
+  const message = readableErrorMessage(error, '').toLowerCase();
+  return (
+    message.includes('登录状态已过期') ||
+    message.includes('会员登录已失效') ||
+    message.includes('请求失败：401')
+  );
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -112,7 +137,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     uni.request({
       url: `${API_BASE}${path}`,
-      method: (init?.method as 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE') || 'GET',
+      method: (init?.method as 'GET' | 'POST' | 'PUT' | 'DELETE') || 'GET',
+      timeout: 15000,
       header: {
         'Content-Type': 'application/json',
         ...(sessionState.token ? { Authorization: `Bearer ${sessionState.token}` } : {}),
@@ -122,6 +148,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(res.data as T);
+          return;
+        }
+        if (res.statusCode === 401) {
+          clearSession();
+          reject(new Error('登录状态已过期，请重新登录'));
           return;
         }
         reject(new Error(readableErrorMessage(res.data, `请求失败：${res.statusCode}`)));
@@ -149,7 +180,7 @@ export async function getMyProfile(): Promise<MemberProfile> {
 
 export async function updateMyProfile(payload: UpdateMyProfileRequest): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me', {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify(payload),
   });
 }

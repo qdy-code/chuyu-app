@@ -2,7 +2,7 @@
   <view class="page">
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="hero">
-      <text class="eyebrow">MOONOISLE</text>
+      <text class="eyebrow">MOONISLE</text>
       <text class="title">美甲作品库</text>
       <text class="desc">月光色、低饱和、清透质感，到店完成专属款式。</text>
       <button class="primary-btn" @click="openAppointment">预约到店</button>
@@ -54,7 +54,7 @@ import { onShow } from '@dcloudio/uni-app';
 import type { CatalogProduct, ProductCategory } from '@member-platform/shared';
 import { listCatalogCategories, listCatalogProducts } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
-import { requireReadyMember } from '@/utils/member';
+import { ensureReadyMemberAccess } from '@/utils/member';
 
 const fallbackCategories: ProductCategory[] = [
   { id: 'local-nail-style', businessType: 'NAIL', name: '款式设计', sortOrder: 10, createdAt: '' },
@@ -110,8 +110,8 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-function openAppointment() {
-  if (!requireReadyMember()) return;
+async function openAppointment() {
+  if (!(await ensureReadyMemberAccess())) return;
   uni.navigateTo({ url: '/pages/appointment/appointment' });
 }
 

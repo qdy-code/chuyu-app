@@ -88,7 +88,7 @@ import {
   listCatalogProducts,
 } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
-import { requireReadyMember } from '@/utils/member';
+import { ensureReadyMemberAccess } from '@/utils/member';
 
 const today = formatDate(new Date());
 const fallbackCategories: ProductCategory[] = [
@@ -149,8 +149,8 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-function openReserve(item: CatalogProduct) {
-  if (!requireReadyMember()) return;
+async function openReserve(item: CatalogProduct) {
+  if (!(await ensureReadyMemberAccess())) return;
   reserveProduct.value = item;
   form.value = { date: nextAvailableDate(today), time: nextTime(), remark: '' };
 }
@@ -174,6 +174,7 @@ function onTimeChange(event: { detail: { value: string } }) {
 
 async function submitReserve() {
   if (!reserveProduct.value || submitting.value) return;
+  if (!(await ensureReadyMemberAccess())) return;
   await loadUnavailableDates();
   if (isDateUnavailable(form.value.date)) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });

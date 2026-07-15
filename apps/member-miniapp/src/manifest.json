@@ -1,9 +1,9 @@
 {
-  "name": "月光石屿 MOONOISLE",
+  "name": "月光石屿MOONISLE",
   "appid": "__UNI__CHUYU_MEMBER__",
-  "description": "月光石屿 MOONOISLE 用户端",
-  "versionName": "0.5.6",
-  "versionCode": "506",
+  "description": "月光石屿MOONISLE 用户端",
+  "versionName": "1.0.1",
+  "versionCode": "10001",
   "uniStatistics": {
     "enable": false
   },
