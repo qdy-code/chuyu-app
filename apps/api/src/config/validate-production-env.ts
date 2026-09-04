@@ -22,7 +22,7 @@ export function validateProductionEnv(): void {
   const corsOrigin = required('CORS_ORIGIN', errors);
   const uploadDir = required('UPLOAD_DIR', errors);
   const appId = required('WECHAT_MINIAPP_APP_ID', errors);
-  required('WECHAT_MINIAPP_APP_SECRET', errors);
+  const appSecret = required('WECHAT_MINIAPP_APP_SECRET', errors);
 
   if (jwtSecret && (jwtSecret.length < 32 || FORBIDDEN_SECRETS.has(jwtSecret))) {
     errors.push('JWT_SECRET 必须是至少 32 位的随机字符串');
@@ -35,6 +35,12 @@ export function validateProductionEnv(): void {
   }
   if (appId && !/^wx[a-zA-Z0-9]{16}$/.test(appId)) {
     errors.push('WECHAT_MINIAPP_APP_ID 格式不正确');
+  }
+  if (
+    appSecret &&
+    (appSecret.length < 24 || /(?:change|example|placeholder|replace|secret|your)/i.test(appSecret))
+  ) {
+    errors.push('WECHAT_MINIAPP_APP_SECRET 必须填写微信后台生成的正式密钥');
   }
   if (databaseUrl && !databaseUrl.startsWith('postgresql://') && !databaseUrl.startsWith('postgres://')) {
     errors.push('DATABASE_URL 必须使用 PostgreSQL 连接地址');

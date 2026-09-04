@@ -3,5 +3,16 @@ dist
 .git
 .claude
 *.log
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.production.example
+.swift-module-cache
+*.MOV
+output
+outputs
 apps/admin-web/dist
+apps/member-miniapp/release
 apps/member-miniapp/dist

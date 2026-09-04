@@ -1,0 +1,20 @@
+FROM node:20-alpine AS build
+
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/admin-web/package.json apps/admin-web/
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY apps/admin-web apps/admin-web
+COPY deploy/admin-web.env.production apps/admin-web/.env.production
+RUN pnpm --filter @member-platform/shared build \
+  && pnpm --filter @member-platform/admin-web build:release
+
+FROM caddy:2-alpine
+
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/admin-web/dist /srv/admin

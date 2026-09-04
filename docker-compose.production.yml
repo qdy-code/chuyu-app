@@ -60,9 +60,11 @@ services:
       start_period: 20s
     logging: *default-logging
 
-  nginx:
-    image: nginx:alpine
-    container_name: chuyu-nginx
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: moonisle-web
     restart: unless-stopped
     depends_on:
       api:
@@ -70,15 +72,19 @@ services:
     ports:
       - '80:80'
       - '443:443'
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-chuy.shop}
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./apps/admin-web/dist:/usr/share/nginx/html/admin:ro
-      - certbot-www:/var/www/certbot
-      - letsencrypt:/etc/letsencrypt
+      - caddy-data:/data
+      - caddy-config:/config
     logging: *default-logging
 
 volumes:
   postgres-data:
+    name: moonisle-postgres-data
   uploads-data:
-  certbot-www:
-  letsencrypt:
+    name: moonisle-uploads-data
+  caddy-data:
+    name: moonisle-caddy-data
+  caddy-config:
+    name: moonisle-caddy-config

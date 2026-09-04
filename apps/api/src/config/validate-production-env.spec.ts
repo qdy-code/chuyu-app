@@ -40,7 +40,7 @@ describe('validateProductionEnv', () => {
       UPLOAD_DIR: '/data/moonisle/uploads',
       MINIAPP_LOGIN_MODE: 'real',
       WECHAT_MINIAPP_APP_ID: 'wx15be87c3c8436c26',
-      WECHAT_MINIAPP_APP_SECRET: 'secret',
+      WECHAT_MINIAPP_APP_SECRET: '8f43c6d81a70b9254e63d0927b41ca56',
     });
     expect(() => validateProductionEnv()).not.toThrow();
   });
