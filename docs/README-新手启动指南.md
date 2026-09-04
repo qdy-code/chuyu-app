@@ -1,102 +1,83 @@
-# 新手启动指南（30分钟可跑通）
+# 月光石屿本地启动指南
 
-## 1. 你将得到什么
+项目包含三个应用：NestJS API、Vue 3 管理后台和 uni-app 微信小程序。小程序提供美甲、饰品、鲜花产品展示与预约，不包含线上下单或付款。
 
-你将同时跑起来 3 个端：
+## 环境准备
 
-1. 后端 API（NestJS）
-2. 后台管理 Web（Vue3）
-3. 会员小程序端（uni-app）
+- Node.js 20 或更高版本
+- pnpm 10
+- Docker Desktop
+- 微信开发者工具
 
-并完成一条演示链路：
+## 首次启动
 
-1. 会员端登录并提交充值申请
-2. 后台审核通过
-3. 会员余额变化
-
-## 2. 前置准备
-
-确保已安装：
-
-1. Node.js LTS
-2. pnpm
-3. 微信开发者工具
-
-## 3. 安装依赖
-
-在仓库根目录执行：
+1. 安装依赖并创建本地配置：
 
 ```bash
 pnpm install
+cp apps/api/.env.example apps/api/.env
+cp apps/admin-web/.env.example apps/admin-web/.env
+cp apps/member-miniapp/.env.example apps/member-miniapp/.env
 ```
 
-## 4. 启动后端 API
+2. 启动 PostgreSQL，执行迁移；需要演示产品时再执行种子：
+
+```bash
+pnpm db:up
+pnpm db:migrate
+SEED_DEMO_CATALOG=true pnpm seed
+```
+
+3. 分别启动三个应用：
 
 ```bash
 pnpm dev:api
-```
-
-默认地址：`http://localhost:3000`
-
-可测试接口：`GET http://localhost:3000/admin/members`
-
-## 5. 启动后台 Web
-
-新开一个终端：
-
-```bash
 pnpm dev:admin
-```
-
-打开浏览器访问终端提示地址（默认是 `http://localhost:5173`）。
-
-## 6. 启动小程序端
-
-新开一个终端：
-
-```bash
 pnpm dev:miniapp
 ```
 
-然后：
+默认地址：
 
-1. 打开微信开发者工具
-2. 选择项目目录 `E:\dev-project\Test\apps\member-miniapp`
-3. 首次导入后直接点“编译”，工具会按 `project.config.json` 的 `miniprogramRoot=dist/build/mp-weixin/` 读取产物
-4. 进入首页后点“演示登录”
+- API：`http://127.0.0.1:3000`
+- 后台：`http://127.0.0.1:5173`
+- 小程序开发产物：`apps/member-miniapp/dist/dev/mp-weixin`
 
-## 7. 演示账号与关键ID
+微信开发者工具调试时直接导入开发产物目录。仅本地开发可关闭合法域名校验；体验版和正式版必须开启。
 
-1. 演示管理员ID：`admin-001`
-2. 默认种子会员ID：`u-demo-001`
+## 登录模式
 
-## 8. 推荐演示流程
+本地配置使用 `MINIAPP_LOGIN_MODE=mock`。正式环境必须改为 `real`，并在服务器安全环境变量中配置当前小程序的 AppID 与 AppSecret。用户首次微信登录后填写手机号，后续登录按 OpenID 找回同一会员，不应再次要求手机号。
 
-1. 在小程序端提交一笔充值申请（例如 100）
-2. 到后台“充值审核”页面点击“通过”
-3. 回小程序“个人信息”刷新，查看余额上涨
+## 测试
 
-## 9. 常见报错
+```bash
+pnpm --filter @member-platform/api build
+pnpm --filter @member-platform/api test
+```
 
-### 9.1 前端提示无法连接 API
+E2E 测试会重置数据库，因此必须显式使用独立测试库，数据库名必须包含 `test` 或 `e2e`：
 
-检查 `apps/admin-web/.env.example` 与 `apps/member-miniapp/.env.example` 中 API 地址（推荐 `http://127.0.0.1:3000`）。
+```bash
+E2E_DATABASE_URL='postgresql://postgres:password@localhost:5432/member_platform_e2e?schema=public' \
+  pnpm --filter @member-platform/api test:e2e
+```
 
-### 9.2 小程序无法请求本地 API
+测试命令会拒绝名称不像测试库的数据库，禁止将其指向生产库。
 
-微信开发者工具里关闭“校验合法域名”用于本地开发，或把 API 部署到可访问地址。
+## 正式构建
 
-### 9.3 端口冲突
+普通 `build` 只用于本地开发。上传微信审核前必须执行：
 
-修改：
+```bash
+pnpm --filter @member-platform/api build
+pnpm --filter @member-platform/admin-web build:release
+pnpm --filter @member-platform/member-miniapp build:release
+```
 
-1. API 端口：`apps/api/.env.example` 中 `API_PORT`
-2. Web 端口：`apps/admin-web/vite.config.ts`
-3. 小程序 dev 端口：`apps/member-miniapp/vite.config.ts`
+微信开发者工具应导入：
 
-## 10. 生产化下一步（你后面再做）
+```text
+apps/member-miniapp/dist/build/mp-weixin
+```
 
-1. 把内存数据仓库替换为 PostgreSQL + ORM（Prisma 或 TypeORM）
-2. 接入真实微信登录 code2session
-3. 增加权限与风控
-4. 接入微信支付
+完整生产部署、真机验收和送审步骤见 [正式上线送审检查清单](正式上线送审检查清单.md)。

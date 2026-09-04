@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { DataStoreService } from '../src/store/data-store.service';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { getUploadDir } from '../src/config/upload-path';
 
 const TEST_PNG = Buffer.from(
@@ -54,7 +54,12 @@ describe('Recharge Flow (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
+    if (process.env.E2E_MANAGED_UPLOAD_DIR === 'true') {
+      rmSync(getUploadDir(), { force: true, recursive: true });
+    }
   });
 
   it('requires a valid member token', async () => {
@@ -198,7 +203,9 @@ describe('Recharge Flow (e2e)', () => {
     const visibleBefore = await request(app.getHttpServer())
       .get('/members/catalog/ACCESSORY/products')
       .expect(200);
-    expect(visibleBefore.body.some((item: { id: string }) => item.id === product.body.id)).toBe(true);
+    expect(visibleBefore.body.some((item: { id: string }) => item.id === product.body.id)).toBe(
+      true,
+    );
 
     const appointment = await request(app.getHttpServer())
       .post('/members/me/appointments')
@@ -219,6 +226,8 @@ describe('Recharge Flow (e2e)', () => {
     const visibleAfter = await request(app.getHttpServer())
       .get('/members/catalog/ACCESSORY/products')
       .expect(200);
-    expect(visibleAfter.body.some((item: { id: string }) => item.id === product.body.id)).toBe(false);
+    expect(visibleAfter.body.some((item: { id: string }) => item.id === product.body.id)).toBe(
+      false,
+    );
   });
 });

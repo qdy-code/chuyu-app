@@ -1,101 +1,124 @@
-"""SSH helper for remote deployment.
+"""SSH helper for remote deployment using the system OpenSSH client.
 
 Usage:
   python ssh_helper.py exec "command"
   python ssh_helper.py upload <local> <remote>
+
+Required environment:
+  DEPLOY_HOST
+
+Authentication uses DEPLOY_KEY_FILE or the local SSH agent. Set
+DEPLOY_ACCEPT_NEW_HOST_KEY=true only after verifying the server fingerprint.
 """
-import sys
+
 import os
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 
-import paramiko
 
-HOST = os.environ.get("DEPLOY_HOST", "114.215.179.81")
-USER = os.environ.get("DEPLOY_USER", "root")
-PASSWORD = os.environ.get("DEPLOY_PASSWORD", "")
+HOST = os.environ.get("DEPLOY_HOST", "").strip()
+USER = os.environ.get("DEPLOY_USER", "root").strip() or "root"
+PORT = os.environ.get("DEPLOY_PORT", "22").strip() or "22"
+KEY_FILE = os.path.expanduser(os.environ.get("DEPLOY_KEY_FILE", "").strip())
+ACCEPT_NEW_HOST_KEY = os.environ.get("DEPLOY_ACCEPT_NEW_HOST_KEY", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
-def get_client() -> paramiko.SSHClient:
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, username=USER, password=PASSWORD, timeout=30)
-    return client
+def validate_config() -> None:
+    if not HOST:
+        raise SystemExit("DEPLOY_HOST env var is required")
+    if os.environ.get("DEPLOY_PASSWORD"):
+        raise SystemExit(
+            "DEPLOY_PASSWORD is not supported; use DEPLOY_KEY_FILE or an SSH agent"
+        )
+    try:
+        port = int(PORT)
+    except ValueError as error:
+        raise SystemExit("DEPLOY_PORT must be an integer") from error
+    if not 1 <= port <= 65535:
+        raise SystemExit("DEPLOY_PORT must be between 1 and 65535")
+    if KEY_FILE and not Path(KEY_FILE).is_file():
+        raise SystemExit(f"DEPLOY_KEY_FILE does not exist: {KEY_FILE}")
+
+
+def common_options() -> list[str]:
+    options = [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=30",
+        "-o",
+        (
+            "StrictHostKeyChecking=accept-new"
+            if ACCEPT_NEW_HOST_KEY
+            else "StrictHostKeyChecking=yes"
+        ),
+    ]
+    if KEY_FILE:
+        options.extend(["-i", KEY_FILE])
+    return options
+
+
+def build_ssh_command(command: str) -> list[str]:
+    validate_config()
+    return [
+        "ssh",
+        *common_options(),
+        "-p",
+        PORT,
+        "--",
+        f"{USER}@{HOST}",
+        command,
+    ]
 
 
 def run_exec(command: str) -> int:
-    client = get_client()
-    try:
-        stdin, stdout, stderr = client.exec_command(command, get_pty=True, timeout=600)
-        for line in iter(stdout.readline, ""):
-            sys.stdout.write(line)
-            sys.stdout.flush()
-        exit_code = stdout.channel.recv_exit_status()
-        err = stderr.read().decode(errors="replace")
-        if err:
-            sys.stderr.write(err)
-        return exit_code
-    finally:
-        client.close()
+    return subprocess.run(build_ssh_command(command), check=False).returncode
 
 
 def upload(local: str, remote: str) -> None:
-    client = get_client()
-    try:
-        sftp = client.open_sftp()
-        local_path = Path(local)
-        if local_path.is_file():
-            sftp.put(str(local_path), remote)
-            print(f"uploaded: {local} -> {remote}")
-        elif local_path.is_dir():
-            upload_dir(sftp, local_path, remote)
-        else:
-            print(f"no such path: {local}")
-            sys.exit(1)
-        sftp.close()
-    finally:
-        client.close()
+    validate_config()
+    local_path = Path(local)
+    if not local_path.exists():
+        raise SystemExit(f"no such path: {local}")
 
-
-def upload_dir(sftp: paramiko.SFTPClient, local_dir: Path, remote_dir: str) -> None:
-    try:
-        sftp.mkdir(remote_dir)
-    except IOError:
-        pass
-
-    for entry in local_dir.iterdir():
-        local_path = entry
-        remote_path = f"{remote_dir}/{entry.name}"
-        if entry.is_dir():
-            upload_dir(sftp, local_path, remote_path)
-        else:
-            sftp.put(str(local_path), remote_path)
-            print(f"  {remote_path}")
+    command = ["scp", *common_options(), "-P", PORT]
+    if local_path.is_dir():
+        command.append("-r")
+    command.extend(
+        [
+            "--",
+            str(local_path),
+            f"{USER}@{HOST}:{shlex.quote(remote)}",
+        ]
+    )
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
+    print(f"uploaded: {local} -> {remote}")
 
 
 def main() -> None:
     if len(sys.argv) < 2:
         print(__doc__)
-        sys.exit(1)
+        raise SystemExit(1)
 
-    if not PASSWORD:
-        print("DEPLOY_PASSWORD env var is required")
-        sys.exit(1)
-
-    cmd = sys.argv[1]
-    if cmd == "exec":
+    command = sys.argv[1]
+    if command == "exec":
         if len(sys.argv) < 3:
-            print("usage: exec <command>")
-            sys.exit(1)
-        exit_code = run_exec(sys.argv[2])
-        sys.exit(exit_code)
-    elif cmd == "upload":
+            raise SystemExit("usage: exec <command>")
+        raise SystemExit(run_exec(sys.argv[2]))
+    if command == "upload":
         if len(sys.argv) < 4:
-            print("usage: upload <local> <remote>")
-            sys.exit(1)
+            raise SystemExit("usage: upload <local> <remote>")
         upload(sys.argv[2], sys.argv[3])
-    else:
-        print(f"unknown command: {cmd}")
-        sys.exit(1)
+        return
+    raise SystemExit(f"unknown command: {command}")
 
 
 if __name__ == "__main__":
