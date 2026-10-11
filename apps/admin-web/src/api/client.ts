@@ -1,5 +1,6 @@
 import type {
   AuditLog,
+  AdminMemberMessage,
   Appointment,
   AppointmentUnavailableDate,
   BusinessType,
@@ -16,11 +17,13 @@ import type {
   CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  ConfirmMemberLinkRequest,
   ProductCategory,
   ProductType,
   RechargeOrder,
   RevenueOverview,
   RejectRechargeRequest,
+  ReplyMemberMessageRequest,
   UpdateAppointmentRequest,
   UpdateCatalogProductRequest,
   UpdateMemberRequest,
@@ -104,6 +107,12 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
 
   if (lower.includes('phone already bound by another member')) return '该手机号已被其他会员使用，请联系门店处理';
   if (lower.includes('member id or phone already exists')) return '会员ID或手机号已存在';
+  if (lower.includes('member link code invalid or expired')) return '关联码无效、已使用或已过期，请让顾客重新生成';
+  if (lower.includes('member identity verification failed')) return '会员信息不匹配，请核对预留手机号和微信关联状态';
+  if (lower.includes('source member has existing data')) return '顾客的新账户已有业务记录或资料，不能直接关联，请先核对';
+  if (lower.includes('member assets changed please refresh')) return '会员余额或积分已变化，请刷新页面后重新核对';
+  if (lower.includes('asset adjustment reason is required')) return '修改余额或积分需要填写调账原因';
+  if (lower.includes('request id already used with different data')) return '本次提交编号已使用，请刷新后重新提交';
   if (lower.includes('member not found')) return '会员不存在';
   if (lower.includes('member has remaining assets')) return '该会员仍有余额或积分，请先处理账户资产';
   if (lower.includes('member has active appointments')) return '该会员仍有待处理或已确认预约，请先处理预约';
@@ -119,6 +128,9 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('appointment unavailable date not found')) return '不可预约日期记录不存在或已删除';
   if (lower.includes('appointment date unavailable')) return '当日预约已满，请选择其他日期';
   if (lower.includes('consumption order not found')) return '消费订单不存在或已删除';
+  if (lower.includes('member message not found')) return '留言不存在或已处理';
+  if (lower.includes('reply is required')) return '请填写回复内容';
+  if (lower.includes('invalid message status')) return '留言筛选条件不正确';
   if (lower.includes('invalid revenue month')) return '统计月份格式不正确';
   if (lower.includes('accessory appointment requires a product')) return '请选择饰品后预约';
   if (lower.includes('birthday can only be changed once')) return '生日日期只能修改一次';
@@ -179,6 +191,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getMember: (id: string) => request<MemberProfile>(`/admin/members/${id}`),
+  confirmMemberLink: (id: string, payload: ConfirmMemberLinkRequest) =>
+    request<MemberProfile>(`/admin/members/${encodeURIComponent(id)}/wechat-link`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    }),
   updateMember: (id: string, payload: UpdateMemberRequest) =>
     request<MemberProfile>(`/admin/members/${id}`, {
       method: 'PATCH',
@@ -290,11 +306,7 @@ export const api = {
     }),
   listRecharges: () => request<RechargeOrder[]>('/admin/recharges'),
   createRecharge: (payload: AdminRechargeRequest) =>
-    request<MemberProfile>('/admin/recharges', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
+    requestFinancialMutation<MemberProfile>('/admin/recharges', payload),
   approveRecharge: (id: string) => request<RechargeOrder>(`/admin/recharges/${id}/approve`, { method: 'POST' }),
   rejectRecharge: (id: string, payload: RejectRechargeRequest) =>
     request<RechargeOrder>(`/admin/recharges/${id}/reject`, {
@@ -307,12 +319,16 @@ export const api = {
     request<ConsumptionOrder[]>(userId ? `/admin/orders?userId=${encodeURIComponent(userId)}` : '/admin/orders'),
   listMemberConsumptionOrders: (userId: string) =>
     request<ConsumptionOrder[]>(`/admin/members/${userId}/consumptions`),
-  createConsumptionOrder: (payload: CreateConsumptionOrderRequest) =>
-    request<ConsumptionOrder>('/admin/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+  listMemberMessages: (status: 'unread' | 'all' = 'all') =>
+    request<AdminMemberMessage[]>(`/admin/messages?status=${status}`),
+  markMemberMessageRead: (id: string) =>
+    request<AdminMemberMessage>(`/admin/messages/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  replyMemberMessage: (id: string, payload: ReplyMemberMessageRequest) =>
+    request<AdminMemberMessage>(`/admin/messages/${encodeURIComponent(id)}/reply`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     }),
+  createConsumptionOrder: (payload: CreateConsumptionOrderRequest) =>
+    requestFinancialMutation<ConsumptionOrder>('/admin/orders', payload),
   deleteConsumptionOrder: (id: string) =>
     request<{ success: true }>(`/admin/orders/${id}`, {
       method: 'DELETE',
@@ -362,6 +378,19 @@ export const api = {
     return result.urls;
   },
 };
+
+async function requestFinancialMutation<T>(path: string, payload: object): Promise<T> {
+  const canonical = JSON.stringify(Object.fromEntries(Object.entries(payload).sort(([a], [b]) => a.localeCompare(b))));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${path}:${canonical}`));
+  const key = `admin-pending:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+  const requestId = localStorage.getItem(key) || crypto.randomUUID();
+  localStorage.setItem(key, requestId);
+  const result = await request<T>(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, requestId }),
+  });
+  if (localStorage.getItem(key) === requestId) localStorage.removeItem(key);
+  return result;
+}
 
 export function toAbsoluteImageUrl(relativeUrl: string): string {
   if (!relativeUrl) return '';

@@ -9,6 +9,8 @@ import {
   IsIn,
   IsBoolean,
   IsNotEmpty,
+  IsUUID,
+  Equals,
   Matches,
   MaxLength,
   Max,
@@ -36,7 +38,27 @@ import {
   UpdateMemberLevelRequest,
   UpdateProductCategoryRequest,
   UpdateProductTypeRequest,
+  ConfirmMemberLinkRequest,
+  ReplyMemberMessageRequest,
 } from '@member-platform/shared';
+
+export class ConfirmMemberLinkDto implements ConfirmMemberLinkRequest {
+  @Matches(/^\d{8}$/)
+  code!: string;
+
+  @Matches(/^1[3-9]\d{9}$/)
+  verifiedPhone!: string;
+
+  @Equals(true)
+  identityVerified!: true;
+}
+
+export class ReplyMemberMessageDto implements ReplyMemberMessageRequest {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reply!: string;
+}
 
 export class CreateMemberLevelDto implements CreateMemberLevelRequest {
   @IsString()
@@ -341,6 +363,9 @@ export class RejectRechargeAdminDto implements RejectRechargeRequest {
 }
 
 export class AdminRechargeDto implements AdminRechargeRequest {
+  @IsUUID()
+  @IsOptional()
+  requestId?: string;
   @IsString()
   userId!: string;
 
@@ -362,6 +387,9 @@ export class AdminRechargeDto implements AdminRechargeRequest {
 }
 
 export class CreateConsumptionOrderDto implements CreateConsumptionOrderRequest {
+  @IsUUID()
+  @IsOptional()
+  requestId?: string;
   @IsString()
   userId!: string;
 
@@ -400,6 +428,20 @@ export class CreateConsumptionOrderDto implements CreateConsumptionOrderRequest 
 }
 
 export class UpdateMemberDto implements UpdateMemberRequest {
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  expectedBalance?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  expectedPoints?: number;
+
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  adjustmentReason?: string;
   @IsString()
   @IsNotEmpty()
   @MaxLength(30)

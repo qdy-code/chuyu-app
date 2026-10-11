@@ -2,7 +2,7 @@
     admin off
 }
 
-{$APP_DOMAIN:chuy.shop} {
+{$APP_DOMAIN:moonisle.shop} {
     encode zstd gzip
 
     request_body {
@@ -29,4 +29,8 @@
         try_files {path} /index.html
         file_server
     }
+}
+
+www.{$APP_DOMAIN:moonisle.shop} {
+    redir https://{$APP_DOMAIN:moonisle.shop}{uri} permanent
 }

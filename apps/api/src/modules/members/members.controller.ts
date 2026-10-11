@@ -29,7 +29,7 @@ import {
 } from '@member-platform/shared';
 import { DataStoreService } from '../../store/data-store.service';
 import { WechatMiniappService } from '../wechat/wechat-miniapp.service';
-import { BindWechatPhoneDto, CreateAppointmentDto, UpdateMyProfileDto } from './dto';
+import { BindWechatPhoneDto, CreateAppointmentDto, CreateMemberLinkCodeDto, CreateMemberMessageDto, UpdateMyProfileDto } from './dto';
 import { getUploadDir } from '../../config/upload-path';
 
 @Controller('members')
@@ -121,6 +121,11 @@ export class MembersController {
     return result.member;
   }
 
+  @Post('me/link-code')
+  createLinkCode(@Headers('x-user-id') userId: string, @Body() payload: CreateMemberLinkCodeDto) {
+    return this.store.createMemberLinkCode(userId, payload.phone);
+  }
+
   @Patch('me/phone')
   async bindWechatPhone(
     @Headers('x-user-id') userId: string | undefined,
@@ -147,6 +152,27 @@ export class MembersController {
       throw new NotFoundException('member not found');
     }
     return this.store.listAppointments(userId);
+  }
+
+  @Get('me/messages')
+  async listMyMessages(@Headers('x-user-id') userId: string | undefined) {
+    if (!userId) throw new NotFoundException('member not found');
+    return this.store.listMemberMessages(userId);
+  }
+
+  @Get('me/points-ledger')
+  async listMyPointsLedger(@Headers('x-user-id') userId: string | undefined) {
+    if (!userId) throw new NotFoundException('member not found');
+    return this.store.listPointsLedger(userId);
+  }
+
+  @Post('me/messages')
+  async createMessage(
+    @Headers('x-user-id') userId: string | undefined,
+    @Body() payload: CreateMemberMessageDto,
+  ) {
+    if (!userId) throw new NotFoundException('member not found');
+    return this.store.createMemberMessage(userId, payload);
   }
 
   @Get('catalog/:business/categories')

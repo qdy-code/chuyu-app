@@ -30,5 +30,5 @@ bash deploy/deploy.sh
 echo ""
 echo "========================================="
 echo "  更新完成！"
-echo "  https://chuy.shop"
+echo "  查看 deploy/.env.production 中的 APP_DOMAIN 获取后台地址"
 echo "========================================="

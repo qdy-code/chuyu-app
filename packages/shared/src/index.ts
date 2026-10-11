@@ -51,6 +51,46 @@ export interface UpdateMemberRequest {
   discountRate?: number;
   balance?: number;
   points?: number;
+  expectedBalance?: number;
+  expectedPoints?: number;
+  adjustmentReason?: string;
+}
+
+export interface MemberLinkCode {
+  code: string;
+  expiresAt: string;
+}
+
+export interface MemberMessage {
+  id: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  readAt?: string;
+  reply?: string;
+  repliedAt?: string;
+}
+
+export interface AdminMemberMessage extends MemberMessage {
+  memberNickname: string;
+  memberPhone?: string;
+  memberAvatarUrl: string;
+  memberDeleted: boolean;
+}
+
+export interface CreateMemberMessageRequest {
+  content: string;
+  requestId: string;
+}
+
+export interface ReplyMemberMessageRequest {
+  reply: string;
+}
+
+export interface ConfirmMemberLinkRequest {
+  code: string;
+  verifiedPhone: string;
+  identityVerified: true;
 }
 
 export interface UpdateMyProfileRequest {
@@ -74,6 +114,17 @@ export interface AdminRechargeRequest {
   amount?: number;
   points?: number;
   remark?: string;
+  requestId?: string;
+}
+
+export interface PointsLedgerEntry {
+  id: string;
+  changePoints: number;
+  beforePoints: number;
+  afterPoints: number;
+  reason: string;
+  relatedOrderId?: string;
+  createdAt: string;
 }
 
 export interface RechargeOrder {
@@ -300,6 +351,7 @@ export interface CreateConsumptionOrderRequest {
   effectImages?: string[];
   orderDate?: string;
   remark?: string;
+  requestId?: string;
 }
 
 export interface ApproveRechargeRequest {

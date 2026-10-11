@@ -50,7 +50,7 @@ async function handleLogin() {
           <ShieldCheck :size="22" />
         </div>
         <div>
-          <h1 class="brand-title">月光石屿 · 管理后台</h1>
+          <h1 class="brand-title">Moonisle</h1>
           <p class="brand-subtitle">门店运营、会员维护、预约排期</p>
         </div>
       </div>

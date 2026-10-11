@@ -64,6 +64,13 @@
       <button class="primary-btn" :disabled="savingPhone" @click="submitPhone">
         {{ savingPhone ? '保存中...' : '完成并进入' }}
       </button>
+      <view v-if="linkCode" class="member-link">
+        <text class="field-label">等待门店核验</text>
+        <text class="link-code" selectable>{{ linkCode.code }}</text>
+        <text class="entry-desc">关联码 {{ linkExpiresText }} 失效，仅向门店工作人员出示。</text>
+        <button class="primary-btn" :disabled="linkBusy" @click="refreshLinkedMember">{{ linkBusy ? '查询中...' : '门店已确认，刷新资料' }}</button>
+        <button class="link-refresh" :disabled="linkBusy" @click="linkExistingMember">重新生成关联码</button>
+      </view>
     </view>
 
     <template v-else>
@@ -104,6 +111,7 @@
           <button class="service-item" @click="openPage('/pages/consumptions/consumptions')">消费记录</button>
           <button class="service-item" @click="openPage('/pages/recharge/recharge')">充值记录</button>
           <button class="service-item" @click="openPage('/pages/account/account')">账户资料</button>
+          <button class="service-item" @click="openPage('/pages/messages/messages')">留言给门店</button>
         </view>
       </view>
     </template>
@@ -114,7 +122,8 @@
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState } from '@/store/session';
-import { readableErrorMessage, updateMyProfile } from '@/utils/api';
+import { createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
+import type { MemberLinkCode } from '@member-platform/shared';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
   discountText,
@@ -124,10 +133,14 @@ import {
   refreshSessionProfile,
   requireReadyMember,
   setLegalConsent,
+  loginWithWechat,
 } from '@/utils/member';
 
 const loggingIn = ref(false);
 const savingPhone = ref(false);
+const linkBusy = ref(false);
+const linkCode = ref<MemberLinkCode | null>(null);
+const linkExpiresText = computed(() => linkCode.value ? new Date(linkCode.value.expiresAt).toTimeString().slice(0, 5) : '');
 const phoneInput = ref('');
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
 const legalAccepted = ref(hasLegalConsent());
@@ -164,6 +177,7 @@ function acceptLegalTerms() {
 }
 
 async function submitPhone() {
+  if (savingPhone.value || linkBusy.value) return;
   const phone = phoneInput.value.trim();
   if (!/^1[3-9]\d{9}$/.test(phone)) {
     uni.showToast({ title: '请输入正确手机号', icon: 'none' });
@@ -180,14 +194,45 @@ async function submitPhone() {
       uni.showModal({
         title: '手机号已使用',
         content: message,
-        showCancel: false,
-        confirmText: '知道了',
+        confirmText: '关联老会员',
+        cancelText: '稍后处理',
+        success: (result) => { if (result.confirm) void linkExistingMember(); },
       });
     } else {
       uni.showToast({ title: message.slice(0, 18), icon: 'none' });
     }
   } finally {
     savingPhone.value = false;
+  }
+}
+
+async function linkExistingMember() {
+  if (linkBusy.value) return;
+  linkBusy.value = true;
+  try {
+    linkCode.value = await createMemberLinkCode(phoneInput.value.trim());
+  } catch (error) {
+    uni.showModal({ title: '暂时无法关联', content: readableErrorMessage(error), showCancel: false });
+  } finally {
+    linkBusy.value = false;
+  }
+}
+
+async function refreshLinkedMember() {
+  if (linkBusy.value) return;
+  linkBusy.value = true;
+  try {
+    await loginWithWechat();
+    if (sessionState.profile?.phone) {
+      linkCode.value = null;
+      uni.showToast({ title: '已关联会员', icon: 'success' });
+    } else {
+      uni.showToast({ title: '等待门店确认', icon: 'none' });
+    }
+  } catch (error) {
+    uni.showModal({ title: '查询未完成', content: readableErrorMessage(error), showCancel: false });
+  } finally {
+    linkBusy.value = false;
   }
 }
 
@@ -215,7 +260,8 @@ function openTerms() {
 
 onShow(async () => {
   legalAccepted.value = hasLegalConsent();
-  await refreshSessionProfile();
+  if (linkCode.value && legalAccepted.value) await refreshLinkedMember();
+  else await refreshSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
   headerAvatarSrc.value = await resolveImageForDisplay(
     sessionState.profile?.avatarUrl,
@@ -231,6 +277,30 @@ onShow(async () => {
   padding: 32rpx 24rpx 48rpx;
   background: #f7f4ef;
 }
+
+.member-link {
+  margin-top: 28rpx;
+  padding-top: 28rpx;
+  border-top: 1px solid #dbe1e5;
+  text-align: center;
+}
+
+.link-code {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #273247;
+}
+
+.link-refresh {
+  margin-top: 16rpx;
+  background: transparent;
+  color: #526675;
+  font-size: 26rpx;
+}
+
+.link-refresh::after { border: 0; }
 
 .page-bg {
   position: fixed;

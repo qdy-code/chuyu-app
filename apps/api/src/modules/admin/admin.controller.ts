@@ -22,6 +22,7 @@ import { v4 as uuid } from 'uuid';
 import {
   Appointment,
   AppointmentUnavailableDate,
+  AdminMemberMessage,
   BUSINESS_TYPE,
   BusinessType,
   CatalogProduct,
@@ -37,6 +38,7 @@ import { getUploadDir } from '../../config/upload-path';
 import { DataStoreService } from '../../store/data-store.service';
 import {
   AdminRechargeDto,
+  ConfirmMemberLinkDto,
   CreateAdminAppointmentDto,
   CreateAppointmentUnavailableDateDto,
   CreateCatalogProductDto,
@@ -52,6 +54,7 @@ import {
   UpdateMemberLevelDto,
   UpdateProductCategoryDto,
   UpdateProductTypeDto,
+  ReplyMemberMessageDto,
 } from './dto';
 
 const convertHeic = require('heic-convert') as (options: {
@@ -95,8 +98,23 @@ export class AdminController {
     return member;
   }
 
+  @Post('members/:id/wechat-link')
+  confirmMemberLink(
+    @Param('id') id: string,
+    @Headers('x-admin-id') adminId: string,
+    @Body() payload: ConfirmMemberLinkDto,
+  ): Promise<MemberProfile> {
+    return this.store.confirmMemberLink(id, adminId, payload);
+  }
+
   @Patch('members/:id')
   async updateMember(@Param('id') id: string, @Body() payload: UpdateMemberDto): Promise<MemberProfile> {
+    if (payload.balance !== undefined && (payload.expectedBalance === undefined || !payload.adjustmentReason?.trim())) {
+      throw new BadRequestException('asset adjustment reason is required');
+    }
+    if (payload.points !== undefined && (payload.expectedPoints === undefined || !payload.adjustmentReason?.trim())) {
+      throw new BadRequestException('asset adjustment reason is required');
+    }
     const result = await this.store.updateMember(id, payload);
     if (!result.member) {
       throw new BadRequestException(result.reason || 'failed to update member');
@@ -128,6 +146,40 @@ export class AdminController {
       throw new NotFoundException('member not found');
     }
     return this.store.listConsumptionOrders(id);
+  }
+
+  @Get('messages')
+  listMemberMessages(@Query('status') status?: string): Promise<AdminMemberMessage[]> {
+    if (status && status !== 'unread' && status !== 'all') {
+      throw new BadRequestException('invalid message status');
+    }
+    return this.store.listAdminMemberMessages(status === 'unread');
+  }
+
+  @Post('messages/:id/read')
+  async markMemberMessageRead(
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Param('id') id: string,
+  ): Promise<AdminMemberMessage> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const message = await this.store.markMemberMessageRead(id, adminId || admins[0]?.id || 'admin-unknown');
+    if (!message) throw new NotFoundException('member message not found');
+    return message;
+  }
+
+  @Post('messages/:id/reply')
+  async replyMemberMessage(
+    @Headers('x-admin-id') adminId: string | undefined,
+    @Param('id') id: string,
+    @Body() payload: ReplyMemberMessageDto,
+  ): Promise<AdminMemberMessage> {
+    const admins = adminId ? [] : await this.store.getAdmins();
+    const result = await this.store.replyMemberMessage(id, adminId || admins[0]?.id || 'admin-unknown', payload.reply);
+    if (!result.message) {
+      if (result.reason === 'member message not found') throw new NotFoundException(result.reason);
+      throw new BadRequestException(result.reason || 'failed to reply member message');
+    }
+    return result.message;
   }
 
   @Post('member-levels')

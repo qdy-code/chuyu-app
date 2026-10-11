@@ -254,4 +254,69 @@ describeWithTestDatabase('DataStoreService', () => {
     expect(result).toEqual({ success: true });
     expect((await store.listAppointments()).some((item) => item.id === created.appointment!.id)).toBe(false);
   });
+
+  it('records points-only recharges once even when identical requests race', async () => {
+    const member = (await store.listMembers())[0];
+    const payload = { userId: member.id, amount: 0, points: 12.5, requestId: 'points-race' };
+    const results = await Promise.all([
+      store.createAdminRecharge('admin-001', payload), store.createAdminRecharge('admin-001', payload),
+    ]);
+    expect(results[0].member?.points).toBe(member.points + 12.5);
+    expect(results[1].member?.points).toBe(member.points + 12.5);
+    expect(results[0].order).toBeUndefined();
+    expect((await store.getMemberById(member.id))?.balance).toBe(member.balance);
+    expect(await store.listPointsLedger(member.id)).toEqual([expect.objectContaining({
+      changePoints: 12.5, beforePoints: member.points, afterPoints: member.points + 12.5,
+    })]);
+  });
+
+  it('records opening points and negative manual adjustments independently of money', async () => {
+    const { member } = await store.createMember({ nickname: 'Points member', points: 20 });
+    await store.updateMember(member!.id, { points: 7.5, expectedPoints: 20, adjustmentReason: '积分更正' });
+    await store.updateMember(member!.id, { nickname: 'Renamed' });
+    const ledger = await store.listPointsLedger(member!.id);
+    expect(ledger).toHaveLength(2);
+    expect(ledger).toEqual(expect.arrayContaining([
+      expect.objectContaining({ changePoints: 20, beforePoints: 0, afterPoints: 20 }),
+      expect.objectContaining({ changePoints: -12.5, beforePoints: 20, afterPoints: 7.5, reason: '积分更正' }),
+    ]));
+  });
+
+  it('rolls back member assets when points ledger persistence fails', async () => {
+    const member = (await store.listMembers())[0];
+    const failure = jest.spyOn(store as any, 'recordPointsChange').mockRejectedValueOnce(new Error('ledger failure'));
+    await expect(store.createAdminRecharge('admin-001', { userId: member.id, amount: 20, points: 5 }))
+      .rejects.toThrow('ledger failure');
+    failure.mockRestore();
+    expect(await store.getMemberById(member.id)).toEqual(member);
+    expect(await store.listPointsLedger(member.id)).toEqual([]);
+  });
+
+  it('stores member messages and supports an auditable admin reply', async () => {
+    const member = (await store.listMembers())[0];
+    const created = await store.createMemberMessage(member.id, {
+      content: '想预约下周的鲜花取花时间，请门店联系我。',
+      requestId: 'message-test-request-001',
+    });
+    const retried = await store.createMemberMessage(member.id, {
+      content: '想预约下周的鲜花取花时间，请门店联系我。',
+      requestId: 'message-test-request-001',
+    });
+    expect(retried.id).toBe(created.id);
+
+    expect((await store.listMemberMessages(member.id))).toEqual([
+      expect.objectContaining({ id: created.id, content: '想预约下周的鲜花取花时间，请门店联系我。' }),
+    ]);
+
+    const unread = await store.listAdminMemberMessages(true);
+    expect(unread).toEqual([
+      expect.objectContaining({ id: created.id, memberNickname: member.nickname, memberDeleted: false }),
+    ]);
+
+    const read = await store.markMemberMessageRead(created.id, 'admin-001');
+    expect(read?.readAt).toBeDefined();
+    const replied = await store.replyMemberMessage(created.id, 'admin-001', '好的，门店会在营业时间联系您确认。');
+    expect(replied.message?.reply).toBe('好的，门店会在营业时间联系您确认。');
+    expect(await store.listAdminMemberMessages(true)).toHaveLength(0);
+  });
 });

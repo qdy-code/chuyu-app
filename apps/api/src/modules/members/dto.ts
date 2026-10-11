@@ -5,6 +5,7 @@ import {
   BusinessType,
   CreateAppointmentRequest,
   UpdateMyProfileRequest,
+  CreateMemberMessageRequest,
 } from '@member-platform/shared';
 
 export class UpdateMyProfileDto implements UpdateMyProfileRequest {
@@ -34,6 +35,23 @@ export class BindWechatPhoneDto implements BindWechatPhoneRequest {
   @Matches(/^1[3-9]\d{9}$/, { message: 'mockPhone must be a valid mainland China mobile number' })
   @IsOptional()
   mockPhone?: string;
+}
+
+export class CreateMemberLinkCodeDto {
+  @Matches(/^1[3-9]\d{9}$/)
+  phone!: string;
+}
+
+export class CreateMemberMessageDto implements CreateMemberMessageRequest {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  content!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  requestId!: string;
 }
 
 export class CreateAppointmentDto implements CreateAppointmentRequest {

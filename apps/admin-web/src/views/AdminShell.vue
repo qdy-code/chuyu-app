@@ -33,6 +33,7 @@ import {
   Receipt,
   Layers,
   PackageSearch,
+  MessageSquareText,
 } from '@lucide/vue';
 import { useAuth } from '@/composables/useAuth';
 import { useDataStore } from '@/composables/useDataStore';
@@ -45,8 +46,9 @@ import AppointmentsTab from './tabs/AppointmentsTab.vue';
 import ProductCatalogsTab from './tabs/ProductCatalogsTab.vue';
 import LogsTab from './tabs/LogsTab.vue';
 import RevenueTab from './tabs/RevenueTab.vue';
+import MessagesTab from './tabs/MessagesTab.vue';
 
-type TabKey = 'members' | 'levels' | 'catalogs' | 'recharges' | 'orders' | 'revenue' | 'appointments' | 'logs';
+type TabKey = 'members' | 'levels' | 'catalogs' | 'recharges' | 'orders' | 'revenue' | 'appointments' | 'messages' | 'logs';
 
 const { logout } = useAuth();
 const {
@@ -56,6 +58,8 @@ const {
   loading,
   error,
   pendingAppointmentCount,
+  memberMessages,
+  refreshMemberMessages,
 } = useDataStore();
 const message = useMessage();
 const dialog = useDialog();
@@ -78,6 +82,7 @@ const tabComponents: Record<TabKey, Component> = {
   orders: OrdersTab,
   revenue: RevenueTab,
   appointments: AppointmentsTab,
+  messages: MessagesTab,
   logs: LogsTab,
 };
 
@@ -89,6 +94,7 @@ const tabTitles: Record<TabKey, { title: string; desc: string }> = {
   orders: { title: '消费订单', desc: '查看与录入门店消费明细' },
   revenue: { title: '营收统计', desc: '按日与月份核对门店营业账目' },
   appointments: { title: '预约排期', desc: '日历视图查看到店预约' },
+  messages: { title: '会员留言', desc: '查看顾客留言并及时回复' },
   logs: { title: '审计日志', desc: '追溯所有后台操作' },
 };
 
@@ -126,6 +132,7 @@ const menuOptions = computed<MenuOption[]>(() => [
     icon: renderIcon(CalendarDays),
     extra: rightExtra(pendingAppointmentCount.value),
   },
+  { label: '会员留言', key: 'messages', icon: renderIcon(MessageSquareText), extra: rightExtra(memberMessages.value.length) },
   { label: '审计日志', key: 'logs', icon: renderIcon(History) },
 ]);
 
@@ -167,6 +174,7 @@ async function checkNewAppointments() {
   checkingAppointments.value = true;
   try {
     await refreshAppointments();
+    await refreshMemberMessages('unread');
     const pending = appointments.value.filter((item) => item.status === 'PENDING');
     const nextIds = new Set(pending.map((item) => item.id));
     if (reminderReady && reminderEnabled.value) {
@@ -201,7 +209,7 @@ function notifyNewAppointment(item: (typeof appointments.value)[number]) {
   playReminderSound();
 
   if ('Notification' in window && Notification.permission === 'granted') {
-    const notification = new Notification('月光石屿收到新预约', {
+    const notification = new Notification('Moonisle 收到新预约', {
       body: `${item.memberNickname}：${summary}`,
       tag: item.id,
     });
@@ -254,6 +262,7 @@ watch(error, (msg) => {
 
 onMounted(async () => {
   await loadAll();
+  await refreshMemberMessages('unread');
   knownPendingIds = new Set(
     appointments.value.filter((item) => item.status === 'PENDING').map((item) => item.id),
   );
@@ -289,10 +298,10 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
       class="admin-sider"
     >
       <div class="sider-brand" :class="{ 'is-collapsed': collapsed }">
-        <div class="brand-mark">月</div>
+        <div class="brand-mark">M</div>
         <transition name="fade">
           <div v-if="!collapsed" class="brand-text">
-            <strong>月光石屿</strong>
+            <strong>Moonisle</strong>
             <small>Admin v1</small>
           </div>
         </transition>
@@ -391,7 +400,7 @@ const publicSecurityLink = import.meta.env.VITE_PUBLIC_SECURITY_LINK as string |
           <footer class="site-footer">
             <span>
               <NIcon style="vertical-align: -3px"><Activity :size="14" /></NIcon>
-              © {{ new Date().getFullYear() }} 月光石屿
+              © {{ new Date().getFullYear() }} Moonisle
             </span>
             <a v-if="icpRecord" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer noopener">
               {{ icpRecord }}

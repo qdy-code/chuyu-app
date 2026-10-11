@@ -5,20 +5,25 @@ import {
   NAvatar,
   NButton,
   NCard,
+  NCheckbox,
+  NFormItem,
+  NModal,
   NEmpty,
   NIcon,
   NInput,
   NInputNumber,
+  NImage,
   NSelect,
   NDataTable,
   NSpace,
+  NSpin,
   NTag,
   NTooltip,
   useDialog,
   useMessage,
 } from 'naive-ui';
-import { Save, Search, Trash2, UserPlus } from '@lucide/vue';
-import type { MemberProfile } from '@member-platform/shared';
+import { ClipboardList, Link2, Save, Search, Trash2, UserPlus } from '@lucide/vue';
+import type { Appointment, ConsumptionOrder, MemberProfile } from '@member-platform/shared';
 import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
 import { discountPercent, formatMoney } from '@/composables/useFormatters';
@@ -31,6 +36,9 @@ interface EditRow {
   discountRate: number;
   balance: number;
   points: number;
+  baseBalance: number;
+  basePoints: number;
+  adjustmentReason: string;
 }
 
 const { members, levels, levelUsageCounts, loadAll } = useDataStore();
@@ -41,6 +49,16 @@ const keyword = ref('');
 const creating = ref(false);
 const savingId = ref('');
 const deletingId = ref('');
+const historyMember = ref<MemberProfile | null>(null);
+const historyOpen = ref(false);
+const historyLoading = ref(false);
+const historyDeletingId = ref('');
+const historyOrders = ref<ConsumptionOrder[]>([]);
+const historyAppointments = ref<Appointment[]>([]);
+const linkingMember = ref<MemberProfile | null>(null);
+const linkModalOpen = ref(false);
+const linking = ref(false);
+const linkForm = ref({ code: '', phone: '', verified: false });
 
 const memberForm = ref({
   id: '',
@@ -70,6 +88,9 @@ function syncEditRow(item: MemberProfile): EditRow {
       discountRate: item.discountRate,
       balance: item.balance,
       points: item.points,
+      baseBalance: item.balance,
+      basePoints: item.points,
+      adjustmentReason: '',
     };
   }
   return editRows.value[item.id];
@@ -86,7 +107,7 @@ const matchedMembers = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
   if (!kw) return members.value;
   return members.value.filter((member) => {
-    const hay = `${member.nickname} ${member.id} ${member.openId} ${member.remark || ''}`.toLowerCase();
+    const hay = `${member.nickname} ${member.id} ${member.phone || ''} ${member.openId} ${member.remark || ''}`.toLowerCase();
     return hay.includes(kw);
   });
 });
@@ -155,6 +176,12 @@ function resetForm() {
 async function saveMember(originId: string) {
   const row = rowsKeyOf(originId);
   if (!row) return;
+  const balanceChanged = Number(row.balance) !== row.baseBalance;
+  const pointsChanged = Number(row.points) !== row.basePoints;
+  if ((balanceChanged || pointsChanged) && !row.adjustmentReason.trim()) {
+    message.warning('修改余额或积分需要填写调账原因');
+    return;
+  }
   savingId.value = originId;
   try {
     await api.updateMember(originId, {
@@ -163,15 +190,45 @@ async function saveMember(originId: string) {
       birthday: row.birthday || undefined,
       levelId: row.levelId,
       discountRate: Number(row.discountRate),
-      balance: Number(row.balance),
-      points: Number(row.points),
+      ...(balanceChanged ? { balance: Number(row.balance), expectedBalance: row.baseBalance } : {}),
+      ...(pointsChanged ? { points: Number(row.points), expectedPoints: row.basePoints } : {}),
+      adjustmentReason: row.adjustmentReason.trim() || undefined,
     });
     message.success('已保存');
+    delete editRows.value[originId];
     await loadAll();
   } catch (e) {
     message.error(e instanceof Error ? e.message : '保存失败');
   } finally {
     savingId.value = '';
+  }
+}
+
+function openLinkMember(member: MemberProfile) {
+  linkForm.value = { code: '', phone: '', verified: false };
+  linkingMember.value = member;
+  linkModalOpen.value = true;
+}
+
+async function confirmWechatLink() {
+  const member = linkingMember.value;
+  if (!member || linking.value) return;
+  if (!/^\d{8}$/.test(linkForm.value.code) || !/^1[3-9]\d{9}$/.test(linkForm.value.phone) || !linkForm.value.verified) {
+    message.warning('请填写顾客关联码、预留手机号，并确认身份核验');
+    return;
+  }
+  linking.value = true;
+  try {
+    await api.confirmMemberLink(member.id, { code: linkForm.value.code, verifiedPhone: linkForm.value.phone, identityVerified: true });
+    linkingMember.value = null;
+    linkModalOpen.value = false;
+    delete editRows.value[member.id];
+    await loadAll();
+    message.success('微信已关联，原会员号及资产保持不变');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '关联失败');
+  } finally {
+    linking.value = false;
   }
 }
 
@@ -192,6 +249,65 @@ function confirmDeleteMember(member: MemberProfile) {
         message.error(error instanceof Error ? error.message : '删除失败');
       } finally {
         deletingId.value = '';
+      }
+    },
+  });
+}
+
+async function openMemberHistory(member: MemberProfile) {
+  historyMember.value = member;
+  historyOpen.value = true;
+  historyLoading.value = true;
+  try {
+    const [orders, appointments] = await Promise.all([
+      api.listMemberConsumptionOrders(member.id),
+      api.listAppointments(),
+    ]);
+    historyOrders.value = orders;
+    historyAppointments.value = appointments.filter((item) => item.userId === member.id);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '使用记录加载失败');
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
+function closeMemberHistory() {
+  historyOpen.value = false;
+  historyMember.value = null;
+  historyOrders.value = [];
+  historyAppointments.value = [];
+}
+
+function businessText(value: string) {
+  return value === 'ACCESSORY' ? '饰品' : value === 'FLOWER' ? '鲜花' : '美甲';
+}
+
+function confirmDeleteHistory(kind: 'order' | 'appointment', id: string) {
+  const title = kind === 'order' ? '作废消费记录' : '删除预约记录';
+  const content = kind === 'order'
+    ? '作废后会退回本单实际扣除的余额，并保留审计记录。确定继续吗？'
+    : '删除后预约不再占用排期，但操作会保留在审计日志。确定继续吗？';
+  dialog.warning({
+    title,
+    content,
+    positiveText: '确认处理',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      historyDeletingId.value = id;
+      try {
+        if (kind === 'order') await api.deleteConsumptionOrder(id);
+        else await api.deleteAppointment(id);
+        message.success(kind === 'order' ? '消费记录已作废并退回余额' : '预约记录已删除');
+        await loadAll();
+        const refreshedMember = historyMember.value
+          ? members.value.find((item) => item.id === historyMember.value?.id)
+          : undefined;
+        if (refreshedMember) await openMemberHistory(refreshedMember);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '处理失败');
+      } finally {
+        historyDeletingId.value = '';
       }
     },
   });
@@ -236,6 +352,7 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
               default: () => row.id,
             }),
           ]),
+          h('div', { class: 'cell-id' }, row.phone || '未填写手机号'),
         ]),
       ]);
     },
@@ -345,9 +462,18 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
       ]),
   },
   {
+    title: '调账原因',
+    key: 'adjustmentReason',
+    minWidth: 180,
+    render: row => h(NInput, {
+      value: syncEditRow(row).adjustmentReason, size: 'small', placeholder: '修改余额或积分时必填',
+      'onUpdate:value': (value: string) => { syncEditRow(row).adjustmentReason = value; },
+    }),
+  },
+  {
     title: '操作',
     key: 'actions',
-    width: 188,
+    width: 390,
     fixed: 'right',
     render: (row) =>
       h(
@@ -355,6 +481,12 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
         { size: 8, wrap: false },
         {
           default: () => [
+            ...(row.openId.startsWith('admin-created-') ? [h(NButton, {
+              size: 'small', secondary: true, onClick: () => openLinkMember(row),
+            }, { icon: () => h(NIcon, null, { default: () => h(Link2) }), default: () => '关联微信' })] : []),
+            h(NButton, {
+              size: 'small', secondary: true, onClick: () => void openMemberHistory(row),
+            }, { icon: () => h(NIcon, null, { default: () => h(ClipboardList) }), default: () => '使用记录' }),
             h(
               NButton,
               {
@@ -483,6 +615,72 @@ function bulkCheckPending() {
         </template>
       </NDataTable>
     </NCard>
+
+    <NModal v-model:show="linkModalOpen" preset="card" title="关联微信会员" style="width: 440px">
+      <NSpace v-if="linkingMember" vertical :size="14">
+        <div>当前会员：{{ linkingMember.nickname }}（{{ linkingMember.id }}）</div>
+        <NFormItem label="顾客关联码">
+          <NInput v-model:value="linkForm.code" maxlength="8" placeholder="顾客小程序显示的 8 位关联码" />
+        </NFormItem>
+        <NFormItem label="预留手机号">
+          <NInput v-model:value="linkForm.phone" maxlength="11" placeholder="与后台会员资料一致的手机号" />
+        </NFormItem>
+        <NCheckbox v-model:checked="linkForm.verified">我已核对顾客身份及手机号</NCheckbox>
+        <NSpace justify="end">
+          <NButton @click="linkModalOpen = false">取消</NButton>
+          <NButton type="primary" :loading="linking" @click="confirmWechatLink">确认关联</NButton>
+        </NSpace>
+      </NSpace>
+    </NModal>
+
+    <NModal
+      :show="historyOpen"
+      preset="card"
+      :title="historyMember ? `${historyMember.nickname}的使用记录` : '会员使用记录'"
+      style="width: 760px; max-width: calc(100vw - 32px)"
+      @update:show="(value: boolean) => { if (!value) closeMemberHistory(); }"
+    >
+      <NSpin :show="historyLoading">
+        <NSpace vertical :size="18">
+          <div v-if="historyMember" class="history-summary">
+            <NAvatar round :size="44" :src="toAbsoluteImageUrl(historyMember.avatarUrl)">{{ historyMember.nickname.slice(0, 1) }}</NAvatar>
+            <div>
+              <strong>{{ historyMember.nickname }}</strong>
+              <div class="dim">{{ historyMember.id }} · 余额 ¥{{ formatMoney(historyMember.balance) }} · {{ historyMember.points }} 积分</div>
+            </div>
+          </div>
+
+          <NCard size="small" :bordered="false" title="消费记录">
+            <NEmpty v-if="historyOrders.length === 0" description="暂无消费记录" />
+            <div v-else class="history-list">
+              <div v-for="item in historyOrders" :key="item.id" class="history-row">
+                <div class="history-main">
+                  <strong>{{ item.title }}</strong>
+                  <span class="dim">{{ item.orderDate }} · {{ item.orderNo }} · 实扣 ¥{{ formatMoney(item.finalPrice) }}</span>
+                  <NSpace v-if="item.effectImages.length" :size="6">
+                    <NImage v-for="image in item.effectImages" :key="image" width="48" height="48" object-fit="cover" :src="toAbsoluteImageUrl(image)" :preview-src="toAbsoluteImageUrl(image)" />
+                  </NSpace>
+                </div>
+                <NButton type="error" secondary size="small" :loading="historyDeletingId === item.id" @click="confirmDeleteHistory('order', item.id)">作废并退回</NButton>
+              </div>
+            </div>
+          </NCard>
+
+          <NCard size="small" :bordered="false" title="预约记录">
+            <NEmpty v-if="historyAppointments.length === 0" description="暂无预约记录" />
+            <div v-else class="history-list">
+              <div v-for="item in historyAppointments" :key="item.id" class="history-row">
+                <div class="history-main">
+                  <strong>{{ businessText(item.businessType) }} · {{ item.appointmentDate }} {{ item.startTime }}</strong>
+                  <span class="dim">{{ item.status }}<span v-if="item.productName"> · {{ item.productName }}</span></span>
+                </div>
+                <NButton type="error" secondary size="small" :loading="historyDeletingId === item.id" @click="confirmDeleteHistory('appointment', item.id)">删除预约</NButton>
+              </div>
+            </div>
+          </NCard>
+        </NSpace>
+      </NSpin>
+    </NModal>
   </NSpace>
 </template>
 
@@ -491,6 +689,14 @@ function bulkCheckPending() {
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 8px -2px rgba(0, 0, 0, 0.04);
 }
+
+.history-summary { display: flex; align-items: center; gap: 12px; }
+.history-list { display: flex; flex-direction: column; gap: 10px; }
+.history-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid #edf0f2; }
+.history-main { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.history-main strong { color: var(--color-text); }
+.dim { color: var(--color-text-muted); font-size: 12px; }
+@media (max-width: 640px) { .history-row { align-items: flex-start; flex-direction: column; } }
 
 .form-grid {
   display: grid;

@@ -89,8 +89,9 @@ import {
 } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import { ensureReadyMemberAccess } from '@/utils/member';
+import { localDateKey as formatDate, nextAppointmentTime } from '@/utils/appointment-time';
 
-const today = formatDate(new Date());
+const today = ref(formatDate(new Date()));
 const fallbackCategories: ProductCategory[] = [
   { id: 'local-flower-bouquet', businessType: 'FLOWER', name: '花束', sortOrder: 10, createdAt: '' },
   { id: 'local-flower-season', businessType: 'FLOWER', name: '当季鲜花', sortOrder: 20, createdAt: '' },
@@ -119,7 +120,7 @@ const loading = ref(false);
 const submitting = ref(false);
 const reserveProduct = ref<CatalogProduct | null>(null);
 const unavailableDates = ref<AppointmentUnavailableDate[]>([]);
-const form = ref({ date: today, time: '10:00', remark: '' });
+const form = ref({ date: today.value, time: '10:00', remark: '' });
 const imageSources = ref<Record<string, string>>({});
 
 async function loadCatalog() {
@@ -151,8 +152,15 @@ function selectCategory(id: string) {
 
 async function openReserve(item: CatalogProduct) {
   if (!(await ensureReadyMemberAccess())) return;
+  today.value = formatDate(new Date());
+  if (!(await loadUnavailableDates())) return;
+  const slot = nextAppointmentTime(new Date(), unavailableDates.value.map((date) => date.appointmentDate));
+  if (!slot) {
+    uni.showToast({ title: '暂无可预约日期', icon: 'none' });
+    return;
+  }
   reserveProduct.value = item;
-  form.value = { date: nextAvailableDate(today), time: nextTime(), remark: '' };
+  form.value = { ...slot, remark: '' };
 }
 
 function closeReserve() {
@@ -165,7 +173,13 @@ function onDateChange(event: { detail: { value: string } }) {
     uni.showToast({ title: '当日预约已满', icon: 'none' });
     return;
   }
-  form.value.date = value;
+  const slot = nextAppointmentTime(new Date(), unavailableDates.value.map((date) => date.appointmentDate), value);
+  if (!slot) {
+    uni.showToast({ title: '暂无可预约日期', icon: 'none' });
+    return;
+  }
+  form.value.date = slot.date;
+  form.value.time = slot.time;
 }
 
 function onTimeChange(event: { detail: { value: string } }) {
@@ -175,7 +189,7 @@ function onTimeChange(event: { detail: { value: string } }) {
 async function submitReserve() {
   if (!reserveProduct.value || submitting.value) return;
   if (!(await ensureReadyMemberAccess())) return;
-  await loadUnavailableDates();
+  if (!(await loadUnavailableDates())) return;
   if (isDateUnavailable(form.value.date)) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
     return;
@@ -229,46 +243,28 @@ function priceText(value?: number): string {
   return value === undefined ? '参考价到店确认' : `参考价 ¥${Number(value).toFixed(0)}`;
 }
 
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 function isDateUnavailable(date: string): boolean {
   return unavailableDates.value.some((item) => item.appointmentDate === date);
 }
 
-function nextAvailableDate(startDate: string): string {
-  const date = new Date(`${startDate}T00:00:00`);
-  for (let offset = 0; offset < 366; offset += 1) {
-    const value = formatDate(date);
-    if (value >= today && !isDateUnavailable(value)) return value;
-    date.setDate(date.getDate() + 1);
-  }
-  return startDate;
-}
-
 async function loadUnavailableDates() {
   try {
-    unavailableDates.value = await listAppointmentUnavailableDates('FLOWER', today);
+    unavailableDates.value = await listAppointmentUnavailableDates('FLOWER', today.value);
+    return true;
   } catch {
     uni.showToast({ title: '预约日期加载失败', icon: 'none' });
+    return false;
   }
-}
-
-function nextTime(): string {
-  const d = new Date(Date.now() + 60 * 60 * 1000);
-  const hour = Math.min(21, Math.max(9, d.getHours()));
-  return `${String(hour).padStart(2, '0')}:00`;
 }
 
 function isPast(date: string, time: string): boolean {
   return new Date(`${date}T${time}:00`).getTime() <= Date.now();
 }
 
-onShow(() => Promise.all([loadCatalog(), loadUnavailableDates()]));
+onShow(() => {
+  today.value = formatDate(new Date());
+  return Promise.all([loadCatalog(), loadUnavailableDates()]);
+});
 </script>
 
 <style scoped>

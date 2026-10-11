@@ -201,7 +201,7 @@ export function formatMoney(value: number | undefined): string {
 
 export function discountText(rate: number | undefined): string {
   const value = Number(rate || 1);
-  return value >= 1 ? '无折扣' : `${Math.round(value * 100)}折`;
+  return value >= 1 ? '无折扣' : `${Number((value * 10).toFixed(2))}折`;
 }
 
 export function statusText(status: RechargeStatus): string {

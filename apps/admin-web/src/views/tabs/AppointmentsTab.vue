@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   NAlert,
   NButton,
@@ -22,9 +22,11 @@ import {
   useMessage,
 } from 'naive-ui';
 import {
+  Cake,
   CalendarOff,
   CalendarPlus,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   Pencil,
   RotateCcw,
@@ -39,6 +41,7 @@ import type {
   AppointmentStatus,
   AppointmentUnavailableDate,
   BusinessType,
+  MemberProfile,
 } from '@member-platform/shared';
 import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
@@ -48,12 +51,18 @@ import {
   appointmentStatusType,
   appointmentTimeText,
 } from '@/composables/useFormatters';
+import { birthdayDateInYear, normalizeBirthday } from './appointmentBirthdays';
 
 const { appointments, members, catalogProducts, loadAll } = useDataStore();
 const message = useMessage();
 const dialog = useDialog();
 
 const calendarTimestamp = ref(Date.now());
+const calendarMonth = ref({
+  year: new Date(calendarTimestamp.value).getFullYear(),
+  month: new Date(calendarTimestamp.value).getMonth() + 1,
+});
+const today = ref(dateString(calendarTimestamp.value));
 const selectedDate = ref('');
 
 const memberKeyword = ref('');
@@ -171,6 +180,30 @@ const selectedDateAppointments = computed(() =>
     .slice()
     .sort((a, b) => a.startTime.localeCompare(b.startTime)),
 );
+
+const birthdayMembersByMonthDay = computed(() =>
+  members.value.reduce<Record<string, MemberProfile[]>>((groups, member) => {
+    const birthday = normalizeBirthday(member.birthday);
+    if (birthday) (groups[birthday] = groups[birthday] || []).push(member);
+    return groups;
+  }, {}),
+);
+
+function birthdayMembersOnDate(date: string): MemberProfile[] {
+  if (birthdayDateInYear(date, Number(date.slice(0, 4))) !== date) return [];
+  return birthdayMembersByMonthDay.value[date.slice(5)] || [];
+}
+
+const selectedDateBirthdays = computed(() => birthdayMembersOnDate(selectedDate.value));
+const todayBirthdays = computed(() => birthdayMembersOnDate(today.value));
+const monthlyBirthdayCount = computed(() => {
+  const { year, month } = calendarMonth.value;
+  return Object.entries(birthdayMembersByMonthDay.value).reduce((count, [birthday, birthdayMembers]) => {
+    return Number(birthday.slice(0, 2)) === month && birthdayDateInYear(birthday, year)
+      ? count + birthdayMembers.length
+      : count;
+  }, 0);
+});
 
 const unavailableByDate = computed(() =>
   unavailableDates.value.reduce<Record<string, AppointmentUnavailableDate[]>>((groups, item) => {
@@ -301,6 +334,12 @@ function openEdit(item: Appointment) {
   showModal.value = true;
 }
 
+function updateBusinessType(businessType: BusinessType) {
+  if (form.value.businessType === businessType) return;
+  form.value.businessType = businessType;
+  form.value.productId = '';
+}
+
 async function submitForm() {
   if (!form.value.userId) {
     message.warning('请选择会员');
@@ -409,9 +448,10 @@ function rejectReviewedAppointment() {
 }
 
 function birthdayText(value?: string): string {
-  if (!value) return '未填写';
-  const match = /(?:\d{4}-)?(\d{2})-(\d{2})$/.exec(value);
-  return match ? `${Number(match[1])}月${Number(match[2])}日` : value;
+  const birthday = normalizeBirthday(value);
+  if (!birthday) return '未填写';
+  const [month, day] = birthday.split('-').map(Number);
+  return `${month}月${day}日`;
 }
 
 function appointmentProductImage(item: Appointment): string {
@@ -437,14 +477,14 @@ function confirmDeleteAppointment(item: Appointment) {
   });
 }
 
-watch(
-  () => form.value.businessType,
-  () => {
-    form.value.productId = '';
-  },
-);
-
-onMounted(loadUnavailableDates);
+let todayTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void loadUnavailableDates();
+  todayTimer = setInterval(() => {
+    today.value = dateString(Date.now());
+  }, 60_000);
+});
+onUnmounted(() => clearInterval(todayTimer));
 </script>
 
 <template>
@@ -471,10 +511,22 @@ onMounted(loadUnavailableDates);
         </div>
       </template>
 
+      <NSpace align="center" :size="16" class="birthday-summary">
+        <span class="birthday-total">
+          <NIcon><Cake /></NIcon>
+          {{ calendarMonth.month }}月生日 {{ monthlyBirthdayCount }} 人
+        </span>
+        <NButton text :type="todayBirthdays.length ? 'primary' : 'default'" @click="selectedDate = today">
+          <template #icon><NIcon><Cake /></NIcon></template>
+          今日生日 {{ todayBirthdays.length }} 人
+        </NButton>
+      </NSpace>
+
       <NCalendar
         v-model:value="calendarTimestamp"
         #="{ year, month, date }"
         @update:value="pickDate"
+        @panel-change="calendarMonth = $event"
       >
         <div class="day-cell" @click="pickDate(new Date(year, month - 1, date).getTime())">
           <div
@@ -482,6 +534,15 @@ onMounted(loadUnavailableDates);
             class="day-unavailable"
           >
             停约
+          </div>
+          <div
+            v-if="birthdayMembersOnDate(calendarDateKey(year, month, date)).length"
+            class="day-birthday"
+            :title="`生日 ${birthdayMembersOnDate(calendarDateKey(year, month, date)).length} 人`"
+            :aria-label="`生日 ${birthdayMembersOnDate(calendarDateKey(year, month, date)).length} 人`"
+          >
+            <NIcon :size="12"><Cake /></NIcon>
+            <span>{{ birthdayMembersOnDate(calendarDateKey(year, month, date)).length }}</span>
           </div>
           <template
             v-if="appointmentsByDate[calendarDateKey(year, month, date)]"
@@ -541,7 +602,7 @@ onMounted(loadUnavailableDates);
     <NModal
       :show="!!selectedDate"
       preset="card"
-      :title="`${selectedDate} 预约详情`"
+      :title="`${selectedDate} 当日详情`"
       style="width: 720px; max-width: calc(100vw - 32px)"
       :bordered="false"
       @update:show="(v: boolean) => !v && (selectedDate = '')"
@@ -591,6 +652,28 @@ onMounted(loadUnavailableDates);
           </NSpace>
         </div>
       </NAlert>
+
+      <section class="selected-birthdays" aria-label="生日会员">
+        <h3 class="birthday-heading">
+          <NIcon><Cake /></NIcon>
+          生日会员 {{ selectedDateBirthdays.length }} 人
+          <NTag v-if="selectedDate === today" size="small" :bordered="false" type="success">今日</NTag>
+        </h3>
+        <ul v-if="selectedDateBirthdays.length" class="birthday-member-list">
+          <li v-for="member in selectedDateBirthdays" :key="member.id">
+            <button type="button" class="birthday-member" @click="openMemberDetail(member.id)">
+              <NAvatar round :size="32" :src="toAbsoluteImageUrl(member.avatarUrl)">
+                {{ member.nickname.slice(0, 1) }}
+              </NAvatar>
+              <span class="birthday-member-info">
+                <strong>{{ member.nickname }}</strong>
+                <span class="dim">{{ member.id }}<template v-if="member.phone"> · {{ member.phone }}</template></span>
+              </span>
+              <NIcon><ChevronRight /></NIcon>
+            </button>
+          </li>
+        </ul>
+      </section>
 
       <NEmpty v-if="!selectedDateAppointments.length" description="当日没有预约" />
 
@@ -768,7 +851,7 @@ onMounted(loadUnavailableDates);
     <NModal
       :show="!!detailMemberId"
       preset="card"
-      title="预约用户资料"
+      title="会员资料"
       style="width: 560px; max-width: calc(100vw - 32px)"
       :bordered="false"
       @update:show="(value: boolean) => !value && (detailMemberId = '')"
@@ -816,7 +899,7 @@ onMounted(loadUnavailableDates);
         <div class="form-grid">
           <div>
             <label>业务类型</label>
-            <NSelect v-model:value="form.businessType" :options="businessOptions" />
+            <NSelect :value="form.businessType" :options="businessOptions" @update:value="updateBusinessType" />
           </div>
           <div>
             <label>关联产品</label>
@@ -948,6 +1031,79 @@ onMounted(loadUnavailableDates);
   flex-direction: column;
   gap: 3px;
   min-height: 56px;
+}
+
+.birthday-summary {
+  margin-bottom: 12px;
+}
+
+.birthday-total,
+.birthday-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.birthday-heading {
+  margin: 0;
+}
+
+.day-birthday {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 3px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #267451;
+  background: #edf7f0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.selected-birthdays {
+  margin-bottom: 18px;
+}
+
+.birthday-member-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.birthday-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.birthday-member:hover,
+.birthday-member:focus-visible {
+  background: #edf7f0;
+}
+
+.birthday-member-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .day-unavailable {

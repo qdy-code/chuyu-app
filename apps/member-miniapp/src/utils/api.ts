@@ -8,6 +8,9 @@ import type {
   CreateAppointmentRequest,
   LoginResponse,
   MemberProfile,
+  MemberLinkCode,
+  MemberMessage,
+  PointsLedgerEntry,
   ProductCategory,
   RechargeOrder,
   UpdateMyProfileRequest,
@@ -72,6 +75,8 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
     return '该手机号已被其他会员使用，请联系门店处理';
   }
   if (lower.includes('member id or phone already exists')) return '会员ID或手机号已存在';
+  if (lower.includes('offline member not found')) return '未找到可关联的门店会员，请联系门店核对';
+  if (lower.includes('source member has existing data')) return '当前账户已有资料或业务记录，请由门店核对处理';
   if (lower.includes('member not found')) return '会员登录已失效，请重新登录';
   if (lower.includes('product is not available')) return '该产品已下架';
   if (lower.includes('product not found')) return '产品不存在或已下架';
@@ -82,6 +87,8 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('accessory appointment requires a product')) return '请选择饰品后预约';
   if (lower.includes('birthday can only be changed once')) return '生日日期只能修改一次';
   if (lower.includes('account id can only be changed once')) return '账户ID只能修改一次';
+  if (lower.includes('message content is required')) return '请输入留言内容';
+  if (lower.includes('request id already used with different data')) return '留言提交编号已使用，请重新输入后提交';
   if (
     lower.includes('invalid code') ||
     lower.includes('code been used') ||
@@ -178,10 +185,25 @@ export async function getMyProfile(): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me');
 }
 
+export function createMemberLinkCode(phone: string): Promise<MemberLinkCode> {
+  return request<MemberLinkCode>('/members/me/link-code', { method: 'POST', body: JSON.stringify({ phone }) });
+}
+
 export async function updateMyProfile(payload: UpdateMyProfileRequest): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me', {
     method: 'PUT',
     body: JSON.stringify(payload),
+  });
+}
+
+export function listMyMessages(): Promise<MemberMessage[]> {
+  return request<MemberMessage[]>('/members/me/messages');
+}
+
+export function createMyMessage(content: string, requestId: string): Promise<MemberMessage> {
+  return request<MemberMessage>('/members/me/messages', {
+    method: 'POST',
+    body: JSON.stringify({ content, requestId }),
   });
 }
 
@@ -232,6 +254,10 @@ export async function listCatalogProducts(
 
 export async function listMyRecharges(): Promise<RechargeOrder[]> {
   return request<RechargeOrder[]>('/recharges/my');
+}
+
+export function listMyPointsLedger(): Promise<PointsLedgerEntry[]> {
+  return request<PointsLedgerEntry[]>('/members/me/points-ledger');
 }
 
 export async function listMyConsumptions(): Promise<ConsumptionOrder[]> {

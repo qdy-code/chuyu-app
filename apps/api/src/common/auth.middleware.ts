@@ -1,10 +1,13 @@
 import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from './token';
+import { PrismaService } from '../store/prisma.service';
 
 @Injectable()
 export class MemberAuthMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction): void {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
     const auth = req.headers.authorization;
     if (!auth?.startsWith('Bearer ')) {
       throw new UnauthorizedException('missing token');
@@ -14,6 +17,9 @@ export class MemberAuthMiddleware implements NestMiddleware {
     if (!payload || payload.role !== 'member') {
       throw new UnauthorizedException('invalid or expired token');
     }
+
+    const member = await this.prisma.member.findUnique({ where: { id: payload.sub }, select: { deletedAt: true } });
+    if (!member || member.deletedAt) throw new UnauthorizedException('invalid or expired token');
 
     req.headers['x-user-id'] = payload.sub;
     next();

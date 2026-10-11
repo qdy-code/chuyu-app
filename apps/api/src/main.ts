@@ -7,10 +7,12 @@ import { getUploadDir } from './config/upload-path';
 import { validateProductionEnv } from './config/validate-production-env';
 import { AppModule } from './app.module';
 import type { NextFunction, Request, Response } from 'express';
+import { configureTrustedProxy } from './config/trusted-proxy';
 
 async function bootstrap() {
   validateProductionEnv();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureTrustedProxy(app);
   app.disable('x-powered-by');
   app.use((_request: Request, response: Response, next: NextFunction) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');

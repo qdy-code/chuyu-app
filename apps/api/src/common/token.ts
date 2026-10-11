@@ -25,7 +25,7 @@ export function verifyToken(token: string): TokenPayload | null {
 
   const data = token.slice(0, dotIndex);
   const sig = token.slice(dotIndex + 1);
-  if (!data || !sig) return null;
+  if (!data || !/^[A-Za-z0-9_-]+$/.test(sig)) return null;
 
   const expected = createHmac('sha256', getSecret()).update(data).digest('base64url');
   if (expected.length !== sig.length) return null;

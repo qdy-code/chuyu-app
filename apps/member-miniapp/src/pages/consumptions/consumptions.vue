@@ -6,7 +6,12 @@
       <text class="header-title">消费记录</text>
     </view>
 
-    <view v-if="records.length === 0" class="empty-card">
+    <view v-if="loading" class="empty-card">正在加载消费记录...</view>
+    <view v-else-if="errorMessage" class="empty-card">
+      <text>{{ errorMessage }}</text>
+      <button @click="refresh">重新加载</button>
+    </view>
+    <view v-else-if="loaded && records.length === 0" class="empty-card">
       <text class="empty-title">暂无消费记录</text>
     </view>
 
@@ -39,22 +44,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { ConsumptionOrder } from '@member-platform/shared';
 import { listMyConsumptions, toAbsoluteImageUrl } from '@/utils/api';
-import { sessionState } from '@/store/session';
-import { discountText, formatMoney, refreshSessionProfile } from '@/utils/member';
+import { discountText, formatMoney } from '@/utils/member';
+import { useMemberRecords } from '@/utils/use-member-records';
 
-const records = ref<ConsumptionOrder[]>([]);
-
-async function refresh() {
-  await refreshSessionProfile();
-  if (!sessionState.userId) {
-    return;
-  }
-  records.value = await listMyConsumptions();
-}
+const { records, loading, loaded, errorMessage, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions);
 
 function previewImages(images: string[], current: string) {
   uni.previewImage({

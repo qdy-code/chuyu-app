@@ -55,6 +55,12 @@
       }
     },
     {
+      "path": "pages/messages/messages",
+      "style": {
+        "navigationBarTitleText": "留言给门店"
+      }
+    },
+    {
       "path": "pages/legal/privacy",
       "style": {
         "navigationBarTitleText": "隐私政策"

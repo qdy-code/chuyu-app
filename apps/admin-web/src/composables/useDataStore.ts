@@ -3,6 +3,7 @@ import { BUSINESS_TYPE } from '@member-platform/shared';
 import type {
   Appointment,
   AuditLog,
+  AdminMemberMessage,
   CatalogProduct,
   ConsumptionOrder,
   MemberLevel,
@@ -22,6 +23,7 @@ const recharges = ref<RechargeOrder[]>([]);
 const orders = ref<ConsumptionOrder[]>([]);
 const appointments = ref<Appointment[]>([]);
 const logs = ref<AuditLog[]>([]);
+const memberMessages = ref<AdminMemberMessage[]>([]);
 
 const loading = ref(false);
 const error = ref('');
@@ -83,6 +85,14 @@ async function refreshAppointments(): Promise<void> {
   }
 }
 
+async function refreshMemberMessages(status: 'unread' | 'all' = 'unread'): Promise<void> {
+  try {
+    memberMessages.value = await api.listMemberMessages(status);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
 const pendingAppointmentCount = computed(
   () => appointments.value.filter((appointment) => appointment.status === 'PENDING').length,
 );
@@ -110,10 +120,12 @@ export function useDataStore() {
     orders,
     appointments,
     logs,
+    memberMessages,
     loading,
     error,
     loadAll,
     refreshAppointments,
+    refreshMemberMessages,
     pendingAppointmentCount,
     pendingRechargeCount,
     levelUsageCounts,

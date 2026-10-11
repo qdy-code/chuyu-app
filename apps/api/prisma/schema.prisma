@@ -21,6 +21,7 @@ model Member {
   balance      Float
   points       Float
   accountIdChangedAt DateTime?
+  deletedAt    DateTime?
 
   @@index([levelId])
 }
@@ -59,9 +60,42 @@ model ConsumptionOrder {
   remark        String?
   createdBy     String
   createdAt     DateTime
+  voidedAt      DateTime?
+  voidedBy      String?
 
   @@index([userId])
   @@index([orderNo])
+}
+
+model MemberLinkRequest {
+  userId         String   @id
+  targetMemberId String
+  codeHash       String   @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+
+  @@index([targetMemberId])
+}
+
+model MutationReceipt {
+  id          String   @id
+  payloadHash String
+  result      Json
+  createdAt   DateTime @default(now())
+}
+
+model MemberMessage {
+  id        String   @id
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+  reply     String?
+  repliedAt DateTime?
+  repliedBy String?
+
+  @@index([userId, createdAt])
+  @@index([readAt, createdAt])
 }
 
 model ProductType {
@@ -203,6 +237,20 @@ model BalanceLedger {
   createdAt      DateTime
 
   @@index([userId])
+}
+
+model PointsLedger {
+  id             String   @id
+  userId         String
+  changePoints   Float
+  beforePoints   Float
+  afterPoints    Float
+  reason         String
+  relatedOrderId String?
+  sourceAuditId  String?  @unique
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model AuditLog {
