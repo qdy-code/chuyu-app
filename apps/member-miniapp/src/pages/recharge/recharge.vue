@@ -18,7 +18,7 @@
       <view v-for="item in records" :key="item.id" class="record">
         <view class="record-top">
           <text class="record-title">充值 ¥{{ formatMoney(item.amount) }}</text>
-          <text class="status" :class="statusClass(item.status)">{{ statusText(item.status) }}</text>
+          <text class="status" :class="statusClass(item.status)">{{ rechargeStatusText(item) }}</text>
         </view>
         <text class="record-meta">充值单号：{{ item.id }}</text>
         <text class="record-meta">时间：{{ formatDate(item.createdAt) }}</text>
@@ -52,7 +52,8 @@
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app';
 import { listMyRecharges, listMyPointsLedger } from '@/utils/api';
-import { formatMoney, statusClass, statusText } from '@/utils/member';
+import { formatMoney, statusClass } from '@/utils/member';
+import { rechargeStatusText } from '@/utils/member-display';
 import { useMemberRecords } from '@/utils/use-member-records';
 import { sessionState } from '@/store/session';
 
@@ -66,7 +67,10 @@ function formatDate(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-onShow(() => Promise.all([refreshMoney(), refreshPoints()]));
+onShow(async () => {
+  await refreshMoney();
+  if (!sessionState.profile?.pospal) await refreshPoints();
+});
 </script>
 
 <style scoped>

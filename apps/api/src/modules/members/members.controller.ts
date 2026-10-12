@@ -148,6 +148,15 @@ export class MembersController {
     return this.pospal.cachedAccountProfile(userId);
   }
 
+  // uni.request on WeChat supports PUT; retain PATCH for existing clients.
+  @Put('me/phone')
+  bindWechatPhoneWithPut(
+    @Headers('x-user-id') userId: string | undefined,
+    @Body() payload: BindWechatPhoneDto,
+  ): Promise<MemberProfile> {
+    return this.bindWechatPhone(userId, payload);
+  }
+
   @Get('me/appointments')
   async listMyAppointments(@Headers('x-user-id') userId: string | undefined): Promise<Appointment[]> {
     if (!userId) {

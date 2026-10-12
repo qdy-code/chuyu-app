@@ -5,7 +5,7 @@
       <text class="eyebrow">MOONISLE</text>
       <text class="title">美甲作品库</text>
       <text class="desc">月光色、低饱和、清透质感，到店完成专属款式。</text>
-      <button class="primary-btn" @click="openAppointment">预约到店</button>
+      <button class="primary-btn" @click="openAppointment()">预约到店</button>
     </view>
 
     <scroll-view class="category-scroll" scroll-x>
@@ -40,7 +40,7 @@
           </view>
           <view class="product-foot">
             <text class="price">{{ priceText(item.referencePrice) }}</text>
-            <button class="reserve-btn" @click="openAppointment">预约</button>
+            <button class="reserve-btn" @click="openAppointment(item)">预约此款</button>
           </view>
         </view>
       </view>
@@ -55,6 +55,7 @@ import type { CatalogProduct, ProductCategory } from '@member-platform/shared';
 import { listCatalogCategories, listCatalogProducts } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import { ensureReadyMemberAccess } from '@/utils/member';
+import { rememberBooking, resumePendingBooking } from '@/utils/booking-flow';
 
 const fallbackCategories: ProductCategory[] = [
   { id: 'local-nail-style', businessType: 'NAIL', name: '款式设计', sortOrder: 10, createdAt: '' },
@@ -110,9 +111,11 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-async function openAppointment() {
-  if (!(await ensureReadyMemberAccess())) return;
-  uni.navigateTo({ url: '/pages/appointment/appointment' });
+async function openAppointment(product?: CatalogProduct) {
+  const intent = { businessType: 'NAIL' as const, product };
+  if (!(await ensureReadyMemberAccess(() => rememberBooking(intent)))) return;
+  rememberBooking(intent);
+  resumePendingBooking();
 }
 
 function imageSrc(item: CatalogProduct): string {

@@ -14,10 +14,11 @@
         <text class="level">{{ sessionState.profile.levelName }}</text>
         <view class="code-box">
           <text class="code-title">会员号</text>
-          <text class="member-id">{{ sessionState.profile.pospal?.customerNumber || sessionState.profile.id }}</text>
+          <text class="member-id">{{ memberNumber(sessionState.profile) }}</text>
         </view>
       </view>
 
+      <AccountSyncStatus />
       <view class="stats-card">
         <view class="stat">
           <text class="stat-value">{{ sessionState.profile.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile.balance)}` }}</text>
@@ -32,21 +33,19 @@
           <text class="stat-label">会员折扣</text>
         </view>
       </view>
-      <view v-if="sessionState.profile.pospal" class="empty-card">
-        <text>{{ sessionState.profile.pospal.state === 'LINKED' ? '余额和积分已从门店收银系统同步' : '请联系门店关联收银系统会员卡' }}</text>
-        <text v-if="sessionState.profile.pospal.syncedAt">上次同步：{{ new Date(sessionState.profile.pospal.syncedAt).toLocaleString() }}</text>
-      </view>
     </template>
   </view>
 </template>
 
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app';
+import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
+import { memberNumber } from '@/utils/member-display';
 import { sessionState } from '@/store/session';
 import { discountText, formatMoney, refreshSessionProfile } from '@/utils/member';
 
 function goHome() {
-  uni.navigateBack({ fail: () => uni.redirectTo({ url: '/pages/index/index' }) });
+  uni.switchTab({ url: '/pages/index/index' });
 }
 
 onShow(refreshSessionProfile);

@@ -150,7 +150,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     uni.request({
       url: `${API_BASE}${path}`,
-      method: (init?.method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') || 'GET',
+      method: (init?.method as 'GET' | 'POST' | 'PUT' | 'DELETE') || 'GET',
       timeout: 15000,
       header: {
         'Content-Type': 'application/json',
@@ -193,7 +193,7 @@ export async function getMyProfile(): Promise<MemberProfile> {
 
 export function bindWechatPhone(code: string): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me/phone', {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify({ code }),
   });
 }

@@ -22,7 +22,10 @@
           <text class="record-title">{{ item.title }}</text>
           <text class="record-meta">订单号：{{ item.orderNo }}</text>
         </view>
-        <text class="price">¥{{ formatMoney(item.finalPrice) }}</text>
+        <view class="record-amount" :class="{ refund: isRefund(item) }">
+          <text class="amount-label">{{ isRefund(item) ? '退款金额' : '消费金额' }}</text>
+          <text class="price">¥{{ formatMoney(Math.abs(item.finalPrice)) }}</text>
+        </view>
       </view>
       <view class="detail-grid">
         <text>类型：{{ item.productType || '未填写' }}</text>
@@ -53,6 +56,10 @@ import { useMemberRecords } from '@/utils/use-member-records';
 import { sessionState } from '@/store/session';
 
 const { records, loading, loaded, errorMessage, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions);
+
+function isRefund(item: ConsumptionOrder): boolean {
+  return item.finalPrice < 0 || (item.source === 'POSPAL' && item.productType === '退货 / 退款');
+}
 
 function previewImages(images: string[], current: string) {
   uni.previewImage({
@@ -159,6 +166,10 @@ onShow(refresh);
   font-size: 32rpx;
   font-weight: 900;
 }
+
+.record-amount { flex-shrink: 0; text-align: right; }
+.amount-label { display: block; margin-bottom: 8rpx; color: #667085; font-size: 22rpx; }
+.record-amount.refund .price, .record-amount.refund .amount-label { color: #527d68; }
 
 .detail-grid {
   margin-top: 20rpx;

@@ -1,6 +1,11 @@
 <template>
   <view class="page">
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
+    <BookingReceipt v-if="submittedAppointment" :appointment="submittedAppointment" />
+    <view v-if="pageError" class="card">
+      <text class="remark">{{ pageError }}</text>
+      <button class="booking-button" @click="refreshPage">重新加载</button>
+    </view>
     <view class="card calendar-card">
       <view class="section-head">
         <view>
@@ -92,6 +97,12 @@
           <button class="close-btn" @click="closeBookingPanel">×</button>
         </view>
 
+        <view v-if="selectedProduct" class="selected-summary">
+          <text class="label">已选款式</text>
+          <text class="summary-text">{{ selectedProduct.name }}</text>
+        </view>
+        <text class="remark">提交的是预约申请，请等待门店确认后再到店。</text>
+
         <view class="slot-head">
           <text class="label">选择到店时间</text>
           <text class="selected-count">{{ selectedArrivalTime }}</text>
@@ -134,7 +145,7 @@
         </view>
 
         <button class="submit" :disabled="submitting || isSelectedDateUnavailable || isSelectedTimeBooked || isSelectedTimePast" @click="confirmSubmitAppointment">
-          {{ submitting ? '提交中...' : '提交预约' }}
+          {{ submitting ? '提交中...' : '提交预约申请' }}
         </button>
       </view>
     </view>
@@ -179,8 +190,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { computed, ref, watch } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import BookingReceipt from '@/components/BookingReceipt.vue';
+import { rememberBooking, takePendingBooking } from '@/utils/booking-flow';
+import type { BookingIntent } from '@/utils/booking-flow';
 import type {
   Appointment,
   AppointmentStatus,
@@ -210,9 +224,16 @@ const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 const today = formatDate(new Date());
 const currentMonth = ref(today.slice(0, 7));
 const submitting = ref(false);
+const selectedProduct = ref<BookingIntent['product']>();
+const submittedAppointment = ref<Appointment | null>(null);
+const pageError = ref('');
 const showBookingPanel = ref(false);
 const showRecordsPanel = ref(false);
 const appointments = ref<Appointment[]>([]);
+watch(() => [sessionState.userId, sessionState.token], () => {
+  submittedAppointment.value = null;
+  appointments.value = [];
+}, { flush: 'sync' });
 const bookedSlots = ref<BookedAppointmentSlot[]>([]);
 const unavailableDates = ref<AppointmentUnavailableDate[]>([]);
 const selectedHourIndex = ref(1);
@@ -368,17 +389,20 @@ function previewAppointmentProduct(item: Appointment) {
 
 function statusText(status: AppointmentStatus): string {
   const map: Record<AppointmentStatus, string> = {
-    PENDING: '待处理',
-    CONFIRMED: '已接受',
-    CANCELLED: '已拒绝',
-    COMPLETED: '已结束',
+    PENDING: '待门店确认',
+    CONFIRMED: '预约已确认',
+    CANCELLED: '预约未能安排',
+    COMPLETED: '服务已完成',
   };
   return map[status] || status;
 }
 
 async function loadAppointments() {
   if (!sessionState.userId) return;
-  appointments.value = await listMyAppointments();
+  const userId = sessionState.userId;
+  const token = sessionState.token;
+  const records = await listMyAppointments();
+  if (sessionState.userId === userId && sessionState.token === token) appointments.value = records;
 }
 
 async function loadBookedSlots() {
@@ -399,7 +423,7 @@ async function loadUnavailableDates() {
 }
 
 async function openBookingPanel() {
-  if (!(await ensureReadyMemberAccess())) return;
+  if (!(await ensureReadyMemberAccess(rememberCurrentBooking))) return;
   await loadUnavailableDates();
   if (form.value.appointmentDate < today) {
     form.value.appointmentDate = today;
@@ -410,8 +434,12 @@ async function openBookingPanel() {
     currentMonth.value = form.value.appointmentDate.slice(0, 7);
   }
   ensureFutureTimeSelection();
-  showBookingPanel.value = true;
-  await loadBookedSlots();
+  try {
+    await loadBookedSlots();
+    showBookingPanel.value = true;
+  } catch {
+    pageError.value = '预约时间加载失败，请重新加载后选择时间。';
+  }
 }
 
 function closeBookingPanel() {
@@ -428,7 +456,8 @@ function closeRecordsPanel() {
 }
 
 async function confirmSubmitAppointment() {
-  if (!(await ensureReadyMemberAccess())) return;
+  if (submitting.value) return;
+  if (!(await ensureReadyMemberAccess(rememberCurrentBooking))) return;
   if (isSelectedDateUnavailable.value) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
     return;
@@ -445,7 +474,7 @@ async function confirmSubmitAppointment() {
 
   uni.showModal({
     title: '确认预约',
-    content: `确认预约 ${form.value.appointmentDate} ${selectedSlotSummary.value}？`,
+    content: `${selectedProduct.value ? `${selectedProduct.value.name}\n` : ''}${form.value.appointmentDate} ${selectedSlotSummary.value}\n提交预约申请后，需等待门店确认。`,
     confirmText: '确认提交',
     success: (result) => {
       if (result.confirm) {
@@ -456,6 +485,7 @@ async function confirmSubmitAppointment() {
 }
 
 async function submitAppointment() {
+  if (submitting.value) return;
   submitting.value = true;
   try {
     await loadUnavailableDates();
@@ -474,16 +504,25 @@ async function submitAppointment() {
       return;
     }
 
-    await createAppointment({
+    const userId = sessionState.userId;
+    const token = sessionState.token;
+    const created = await createAppointment({
       businessType: 'NAIL',
+      productId: selectedProduct.value?.id,
       appointmentDate: form.value.appointmentDate,
       startTime: selectedArrivalTime.value,
       remark: form.value.remark || undefined,
     });
+    if (sessionState.userId !== userId || sessionState.token !== token) return;
+    submittedAppointment.value = created;
     form.value.remark = '';
     showBookingPanel.value = false;
-    uni.showToast({ title: '预约已提交', icon: 'success' });
-    await Promise.all([loadAppointments(), loadBookedSlots()]);
+    uni.showToast({ title: '已提交，待门店确认', icon: 'none' });
+    try {
+      await Promise.all([loadAppointments(), loadBookedSlots()]);
+    } catch {
+      pageError.value = '预约申请已提交，但记录刷新失败，请重新加载查看。';
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : '预约失败';
     uni.showToast({ title: message.slice(0, 18), icon: 'none' });
@@ -492,16 +531,45 @@ async function submitAppointment() {
   }
 }
 
-onShow(async () => {
+function rememberCurrentBooking() {
+  rememberBooking({
+    businessType: 'NAIL', product: selectedProduct.value,
+    date: form.value.appointmentDate, time: selectedArrivalTime.value, remark: form.value.remark,
+  });
+}
+
+onLoad((query) => { showRecordsPanel.value = query?.records === '1'; });
+
+async function refreshPage() {
   nowTick.value = Date.now();
-  await refreshSessionProfile();
-  await Promise.all([loadAppointments(), loadUnavailableDates()]);
-  if (isSelectedDateUnavailable.value) {
-    form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
-    currentMonth.value = form.value.appointmentDate.slice(0, 7);
+  pageError.value = '';
+  try {
+    await refreshSessionProfile();
+    const intent = takePendingBooking('NAIL');
+    if (intent) {
+      selectedProduct.value = intent.product;
+      form.value.appointmentDate = intent.date || today;
+      form.value.remark = intent.remark || '';
+      currentMonth.value = form.value.appointmentDate.slice(0, 7);
+      if (intent.time) {
+        const [hour, minute] = intent.time.split(':');
+        selectedHourIndex.value = Math.max(0, hourOptions.indexOf(hour));
+        selectedMinuteIndex.value = Math.max(0, allMinuteOptions.indexOf(minute));
+      }
+    }
+    await Promise.all([loadAppointments(), loadUnavailableDates()]);
+    if (isSelectedDateUnavailable.value) {
+      form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
+      currentMonth.value = form.value.appointmentDate.slice(0, 7);
+    }
+    await loadBookedSlots();
+    if (intent) await openBookingPanel();
+  } catch {
+    pageError.value = '预约记录或时间加载失败，请重新加载。';
   }
-  await loadBookedSlots();
-});
+}
+
+onShow(refreshPage);
 
 function isPastAppointmentTime(date: string, time: string): boolean {
   const [year, month, day] = date.split('-').map((part) => Number(part));

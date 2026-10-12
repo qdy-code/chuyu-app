@@ -95,7 +95,7 @@
         <view class="member-main">
           <text class="card-label">我的会员卡</text>
           <text class="card-title">{{ sessionState.profile?.levelName || '会员' }}</text>
-          <text class="card-desc">会员号：{{ sessionState.profile?.pospal?.customerNumber || sessionState.profile?.id }}</text>
+          <text class="card-desc">会员号：{{ memberNumber(sessionState.profile) }}</text>
         </view>
         <view class="discount-badge">
           <text class="discount-value">{{ discountText(sessionState.profile?.discountRate) }}</text>
@@ -103,6 +103,7 @@
         </view>
       </view>
 
+      <AccountSyncStatus />
       <view class="stats-card">
         <view class="stat">
           <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile?.balance)}` }}</text>
@@ -121,8 +122,6 @@
       </view>
 
       <view class="section">
-        <text v-if="sessionState.profile?.pospal?.state === 'UNLINKED'" class="card-desc">请联系门店关联银豹会员卡后查看余额和积分。</text>
-        <text v-if="sessionState.profile?.pospal?.syncedAt" class="card-desc">收银账务上次同步：{{ new Date(sessionState.profile.pospal.syncedAt).toLocaleString() }}</text>
         <text class="section-title">我的服务</text>
         <view class="service-grid">
           <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>
@@ -138,6 +137,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
+import { memberNumber } from '@/utils/member-display';
+import { resumePendingBooking } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState, setProfile } from '@/store/session';
 import { bindWechatPhone, createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
@@ -183,6 +185,7 @@ async function handleEnter() {
   try {
     await ensureSession();
     phoneInput.value = sessionState.profile?.phone || '';
+    resumePendingBooking();
   } catch (error) {
     console.error('[member login failed]', error);
     uni.showToast({ title: readableErrorMessage(error, '登录未完成').slice(0, 18), icon: 'none' });
@@ -199,6 +202,12 @@ function handleLegalConsentChange(event: { detail: { value: string[] } }) {
 function acceptLegalTerms() {
   legalAccepted.value = true;
   setLegalConsent(true);
+  resumePendingBooking();
+}
+
+function completeEntry() {
+  if (resumePendingBooking()) return;
+  if (needsProfileSetup.value) openProfileSetup();
 }
 
 async function handleWechatPhone(event: { detail: { code?: string; errMsg?: string; errno?: number } }) {
@@ -220,7 +229,7 @@ async function handleWechatPhone(event: { detail: { code?: string; errMsg?: stri
     setProfile(profile);
     phoneInput.value = profile.phone || '';
     uni.showToast({ title: '手机号已保存', icon: 'success' });
-    if (needsProfileSetup.value) openProfileSetup();
+    completeEntry();
   } catch (error) {
     showManualPhone.value = true;
     uni.showModal({ title: '手机号未保存', content: readableErrorMessage(error, '授权失败，请重新授权或手动填写'), showCancel: false });
@@ -238,10 +247,10 @@ async function submitPhone() {
   }
   savingPhone.value = true;
   try {
-    await updateMyProfile({ phone });
+    setProfile(await updateMyProfile({ phone }));
     await refreshSessionProfile();
     uni.showToast({ title: '已完成', icon: 'success' });
-    if (needsProfileSetup.value) openProfileSetup();
+    completeEntry();
   } catch (error) {
     const message = readableErrorMessage(error, '保存失败');
     if (message.includes('手机号已被其他会员使用')) {
@@ -280,6 +289,7 @@ async function refreshLinkedMember() {
     if (sessionState.profile?.phone) {
       linkCode.value = null;
       uni.showToast({ title: '已关联会员', icon: 'success' });
+      resumePendingBooking();
     } else {
       uni.showToast({ title: '等待门店确认', icon: 'none' });
     }
@@ -317,6 +327,7 @@ onShow(async () => {
   if (linkCode.value && legalAccepted.value) await refreshLinkedMember();
   else await refreshSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
+  if (resumePendingBooking()) return;
   headerAvatarSrc.value = await resolveImageForDisplay(
     sessionState.profile?.avatarUrl,
     '/static/brand/logo-avatar-v2.png',

@@ -7,6 +7,8 @@
       <text class="desc">浏览花束与当季鲜花，选择取花日期时间后提交预约。</text>
     </view>
 
+    <BookingReceipt v-if="submittedAppointment" :appointment="submittedAppointment" />
+
     <scroll-view class="category-scroll" scroll-x>
       <view class="category-row">
         <button class="category-chip" :class="{ active: !selectedCategoryId }" @click="selectCategory('')">全部</button>
@@ -70,7 +72,7 @@
           <input v-model="form.remark" class="input" placeholder="可填写颜色、包装或祝福卡需求" />
         </view>
         <button class="submit" :disabled="submitting || isDateUnavailable(form.date)" @click="submitReserve">
-          {{ submitting ? '提交中...' : '提交预约' }}
+          {{ submitting ? '提交中...' : '提交预约申请' }}
         </button>
       </view>
     </view>
@@ -78,9 +80,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { sessionState } from '@/store/session';
+import BookingReceipt from '@/components/BookingReceipt.vue';
+import { rememberBooking, takePendingBooking } from '@/utils/booking-flow';
+import type { BookingIntent } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
-import type { AppointmentUnavailableDate, CatalogProduct, ProductCategory } from '@member-platform/shared';
+import type { Appointment, AppointmentUnavailableDate, CatalogProduct, ProductCategory } from '@member-platform/shared';
 import {
   createAppointment,
   listAppointmentUnavailableDates,
@@ -118,6 +124,10 @@ const products = ref<CatalogProduct[]>(fallbackEnabled ? fallbackProducts : []);
 const selectedCategoryId = ref('');
 const loading = ref(false);
 const submitting = ref(false);
+const submittedAppointment = ref<Appointment | null>(null);
+watch(() => [sessionState.userId, sessionState.token], () => {
+  submittedAppointment.value = null;
+}, { flush: 'sync' });
 const reserveProduct = ref<CatalogProduct | null>(null);
 const unavailableDates = ref<AppointmentUnavailableDate[]>([]);
 const form = ref({ date: today.value, time: '10:00', remark: '' });
@@ -150,8 +160,8 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-async function openReserve(item: CatalogProduct) {
-  if (!(await ensureReadyMemberAccess())) return;
+async function openReserve(item: CatalogProduct, draft?: BookingIntent) {
+  if (!(await ensureReadyMemberAccess(() => rememberBooking({ businessType: 'FLOWER', product: item, ...draft })))) return;
   today.value = formatDate(new Date());
   if (!(await loadUnavailableDates())) return;
   const slot = nextAppointmentTime(new Date(), unavailableDates.value.map((date) => date.appointmentDate));
@@ -160,7 +170,9 @@ async function openReserve(item: CatalogProduct) {
     return;
   }
   reserveProduct.value = item;
-  form.value = { ...slot, remark: '' };
+  form.value = draft?.date && draft.time && !isPast(draft.date, draft.time) && !isDateUnavailable(draft.date)
+    ? { date: draft.date, time: draft.time, remark: draft.remark || '' }
+    : { ...slot, remark: draft?.remark || '' };
 }
 
 function closeReserve() {
@@ -188,7 +200,9 @@ function onTimeChange(event: { detail: { value: string } }) {
 
 async function submitReserve() {
   if (!reserveProduct.value || submitting.value) return;
-  if (!(await ensureReadyMemberAccess())) return;
+  if (!(await ensureReadyMemberAccess(() => rememberBooking({
+    businessType: 'FLOWER', product: reserveProduct.value!, ...form.value,
+  })))) return;
   if (!(await loadUnavailableDates())) return;
   if (isDateUnavailable(form.value.date)) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
@@ -200,14 +214,18 @@ async function submitReserve() {
   }
   submitting.value = true;
   try {
-    await createAppointment({
+    const userId = sessionState.userId;
+    const token = sessionState.token;
+    const created = await createAppointment({
       businessType: 'FLOWER',
       productId: reserveProduct.value.id,
       appointmentDate: form.value.date,
       startTime: form.value.time,
       remark: form.value.remark || undefined,
     });
-    uni.showToast({ title: '预约已提交', icon: 'success' });
+    if (sessionState.userId !== userId || sessionState.token !== token) return;
+    submittedAppointment.value = created;
+    uni.showToast({ title: '已提交，待门店确认', icon: 'none' });
     reserveProduct.value = null;
   } catch (error) {
     uni.showToast({ title: (error instanceof Error ? error.message : '提交失败').slice(0, 18), icon: 'none' });
@@ -261,9 +279,17 @@ function isPast(date: string, time: string): boolean {
   return new Date(`${date}T${time}:00`).getTime() <= Date.now();
 }
 
-onShow(() => {
+onShow(async () => {
   today.value = formatDate(new Date());
-  return Promise.all([loadCatalog(), loadUnavailableDates()]);
+  await Promise.all([loadCatalog(), loadUnavailableDates()]);
+  const intent = takePendingBooking('FLOWER');
+  if (!intent) return;
+  const product = products.value.find((item) => item.id === intent.product?.id);
+  if (!product) {
+    uni.showModal({ title: '商品暂不可预约', content: '原商品已下架或暂未加载，请重新选择。', showCancel: false });
+    return;
+  }
+  await openReserve(product, intent);
 });
 </script>
 

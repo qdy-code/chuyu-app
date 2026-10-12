@@ -89,7 +89,7 @@
         <text class="section-title">会员信息</text>
         <view class="info-row">
           <text class="info-label">会员号</text>
-          <text class="info-value wrap">{{ sessionState.profile.id }}</text>
+          <text class="info-value wrap">{{ memberNumber(sessionState.profile) }}</text>
         </view>
         <view class="info-row">
           <text class="info-label">昵称</text>
@@ -128,6 +128,8 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { memberNumber } from '@/utils/member-display';
+import { clearPendingBooking } from '@/utils/booking-flow';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import { readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
@@ -311,6 +313,7 @@ async function confirmLogout() {
   });
   if (!confirmed) return;
 
+  clearPendingBooking();
   clearSession();
   nickname.value = '';
   birthday.value = '';
