@@ -49,9 +49,20 @@
 
     <view v-else-if="needsPhoneSetup" class="entry-card">
       <text class="entry-kicker">首次使用</text>
-      <text class="entry-title">填写手机号</text>
-      <text class="entry-desc">只需要填写手机号，方便门店确认预约和会员资料。</text>
-      <view class="phone-field">
+      <text class="entry-title">授权手机号</text>
+      <text class="entry-desc">通过微信授权自动填写手机号，用于门店会员核对和预约联系。</text>
+      <button
+        class="primary-btn"
+        open-type="getPhoneNumber|agreePrivacyAuthorization"
+        :disabled="savingPhone || linkBusy"
+        @getphonenumber="handleWechatPhone"
+      >
+        {{ savingPhone ? '保存中...' : '微信授权手机号' }}
+      </button>
+      <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="showManualPhone = !showManualPhone">
+        {{ showManualPhone ? '收起手动填写' : '手动填写手机号' }}
+      </button>
+      <view v-if="showManualPhone" class="phone-field">
         <text class="field-label">手机号</text>
         <input
           v-model="phoneInput"
@@ -61,7 +72,7 @@
           placeholder="请输入 11 位手机号"
         />
       </view>
-      <button class="primary-btn" :disabled="savingPhone" @click="submitPhone">
+      <button v-if="showManualPhone" class="primary-btn" :disabled="savingPhone || linkBusy" @click="submitPhone">
         {{ savingPhone ? '保存中...' : '完成并进入' }}
       </button>
       <view v-if="linkCode" class="member-link">
@@ -123,8 +134,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { sessionState } from '@/store/session';
-import { createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
+import { sessionState, setProfile } from '@/store/session';
+import { bindWechatPhone, createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
 import type { MemberLinkCode } from '@member-platform/shared';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
@@ -144,6 +155,7 @@ const linkBusy = ref(false);
 const linkCode = ref<MemberLinkCode | null>(null);
 const linkExpiresText = computed(() => linkCode.value ? new Date(linkCode.value.expiresAt).toTimeString().slice(0, 5) : '');
 const phoneInput = ref('');
+const showManualPhone = ref(false);
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
 const legalAccepted = ref(hasLegalConsent());
 
@@ -176,6 +188,33 @@ function handleLegalConsentChange(event: { detail: { value: string[] } }) {
 function acceptLegalTerms() {
   legalAccepted.value = true;
   setLegalConsent(true);
+}
+
+async function handleWechatPhone(event: { detail: { code?: string; errMsg?: string; errno?: number } }) {
+  if (savingPhone.value || linkBusy.value) return;
+  const { code, errMsg = '', errno } = event.detail;
+  if (!code) {
+    showManualPhone.value = true;
+    const content = /deny|cancel/i.test(errMsg)
+      ? '你暂未授权手机号，可以手动填写，或稍后再次授权。'
+      : errno === 1400001
+        ? '微信手机号授权暂不可用，可以手动填写或联系门店。'
+        : '手机号授权未完成，可以重新授权或手动填写。';
+    uni.showModal({ title: '手机号授权', content, showCancel: false });
+    return;
+  }
+  savingPhone.value = true;
+  try {
+    const profile = await bindWechatPhone(code);
+    setProfile(profile);
+    phoneInput.value = profile.phone || '';
+    uni.showToast({ title: '手机号已保存', icon: 'success' });
+  } catch (error) {
+    showManualPhone.value = true;
+    uni.showModal({ title: '手机号未保存', content: readableErrorMessage(error, '授权失败，请重新授权或手动填写'), showCancel: false });
+  } finally {
+    savingPhone.value = false;
+  }
 }
 
 async function submitPhone() {

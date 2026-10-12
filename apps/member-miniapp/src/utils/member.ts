@@ -7,7 +7,7 @@ import {
 import { clearSession, restoreSession, sessionState, setLoginSession, setProfile } from '@/store/session';
 import type { RechargeStatus } from '@member-platform/shared';
 
-export const LEGAL_CONSENT_VERSION = '2026-07-12';
+export const LEGAL_CONSENT_VERSION = '2026-10-11';
 const LEGAL_CONSENT_STORAGE_KEY = 'member-miniapp-legal-consent';
 let memberAccessInFlight: Promise<boolean> | null = null;
 
@@ -166,7 +166,7 @@ function isRetriableLoginError(error: unknown): boolean {
 async function promptPhoneSetup(): Promise<void> {
   const confirmed = await showConfirm({
     title: '完善手机号',
-    content: '首次使用请先填写手机号，方便门店确认预约。',
+    content: '首次使用请先授权或填写手机号，方便门店确认预约。',
     confirmText: '去填写',
   });
   if (confirmed) uni.switchTab({ url: '/pages/index/index' });

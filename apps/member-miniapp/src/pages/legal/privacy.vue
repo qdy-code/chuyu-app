@@ -3,7 +3,7 @@
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
       <text class="header-title">隐私政策</text>
-      <text class="header-desc">最后更新日期：2026-07-12</text>
+      <text class="header-desc">最后更新日期：2026-10-11</text>
     </view>
 
     <view class="card">
@@ -17,7 +17,7 @@
       <text class="section-title">二、我们收集哪些信息</text>
       <text class="para">为完成会员登录和服务展示，本小程序仅收集以下最小必要信息：</text>
       <text class="bullet">• 微信 OpenID：用于识别你的会员身份；通过 wx.login 获取。</text>
-      <text class="bullet">• 手机号：由你首次登录时主动填写，用于识别会员、联系确认预约及维护会员资料。</text>
+      <text class="bullet">• 手机号：由你主动点击微信手机号授权并确认后获取，或由你选择手动填写，用于门店会员身份核对、联系确认预约及维护会员资料。拒绝微信手机号授权后仍可手动填写。</text>
       <text class="bullet">• 昵称与头像：由你在账户资料页主动填写或选择，用于小程序和后台会员资料展示。</text>
       <text class="bullet">• 生日月日：由你自愿填写，用于会员关怀；不要求填写出生年份。</text>
       <text class="bullet">• 预约及服务信息：包括业务类型、所选产品、预约日期时间和备注，用于门店排期与履约。</text>
