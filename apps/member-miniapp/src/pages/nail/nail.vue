@@ -33,7 +33,7 @@
     </view>
     <view v-else class="product-list">
       <view v-for="item in products" :key="item.id" class="product-card">
-        <ProductGallery :images="item.images" />
+        <ProductGallery :images="item.images" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
         <view class="product-body">
           <view>
             <text class="product-name">{{ item.name }}</text>
@@ -53,6 +53,7 @@
 
 <script setup lang="ts">
 import ProductGallery from '@/components/ProductGallery.vue';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import StoreContact from '@/components/StoreContact.vue';
 import { referencePriceText } from '@/utils/catalog-display';
 import { ref } from 'vue';
@@ -87,6 +88,7 @@ const categories = ref<ProductCategory[]>(fallbackEnabled ? fallbackCategories :
 const products = ref<CatalogProduct[]>(fallbackEnabled ? fallbackProducts : []);
 const selectedCategoryId = ref('');
 const loading = ref(false);
+const imagePreview = createImagePreviewReturnGuard();
 const catalogError = ref('');
 let catalogRevision = 0;
 
@@ -129,7 +131,10 @@ async function openAppointment(product?: CatalogProduct) {
 
 
 
-onShow(loadCatalog);
+onShow(() => {
+  if (imagePreview.consumeReturn()) return;
+  return loadCatalog();
+});
 </script>
 
 <style scoped>

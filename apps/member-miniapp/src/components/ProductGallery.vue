@@ -30,13 +30,15 @@ import { productImageUrls } from '@/utils/catalog-display';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 
 const props = defineProps<{ images: string[] }>();
+const emit = defineEmits<{ (event: 'preview-start'): void; (event: 'preview-failed'): void }>();
 const urls = computed(() => productImageUrls(props.images));
 const displayUrls = ref<string[]>([]);
 const current = ref(0);
 const previewing = ref(false);
 const showPackagePreview = ref(false);
 let revision = 0;
-watch(urls, async (images) => {
+watch(() => JSON.stringify(urls.value), async () => {
+  const images = [...urls.value];
   const request = ++revision;
   current.value = 0;
   displayUrls.value = [];
@@ -57,9 +59,14 @@ async function preview(index: number) {
   try {
     const previewUrls = await Promise.all(images.map(source => resolveImageForDisplay(source, '')));
     if (previewUrls.some(source => !source)) throw new Error('Image unavailable');
+    emit('preview-start');
     uni.previewImage({ current: previewUrls[index] || previewUrls[0], urls: previewUrls,
-      fail: () => uni.showToast({ title: '图片预览失败，请重试', icon: 'none' }) });
+      fail: () => {
+        emit('preview-failed');
+        uni.showToast({ title: '图片预览失败，请重试', icon: 'none' });
+      } });
   } catch {
+    emit('preview-failed');
     uni.showToast({ title: '图片预览失败，请重试', icon: 'none' });
   } finally {
     previewing.value = false;

@@ -14,6 +14,7 @@ function setup(t, overrides = {}, initialProfile = null) {
   const notices = [];
   const payloads = [];
   const hooks = new Map();
+  const emissions = [];
   let serverProfile = initialProfile;
   let accept = true;
   const uni = {
@@ -83,11 +84,13 @@ function setup(t, overrides = {}, initialProfile = null) {
       if (dependency.startsWith('@/')) return load(dependency.slice(2) + '.ts');
       throw new Error(`Unexpected dependency: ${dependency}`);
     };
-    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout, defineProps: () => overrides.props || {} }));
+    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout,
+      defineProps: () => overrides.props || {}, defineEmits: () => (event, ...args) => emissions.push({ event, args }),
+    }));
     hooks.set(name, pageHooks);
     return exports;
   }
-  return { session, api, load, navigation, notices, payloads, hooks, runInScope: fn => scope.run(fn), cancel: () => { accept = false; } };
+  return { session, api, load, navigation, notices, payloads, hooks, emissions, runInScope: fn => scope.run(fn), cancel: () => { accept = false; } };
 }
 
 const product = { id: 'style-test', name: '月光晕染', images: [], businessType: 'NAIL' };
@@ -461,4 +464,48 @@ test('package photos use fullscreen viewing rather than passing an unsupported p
   assert.equal(gallery.current.value, 1);
   assert.equal(gallery.showPackagePreview.value, true);
   assert.equal(ctx.notices.length, 0);
+});
+
+for (const page of ['nail', 'accessory', 'flower']) {
+  test(`${page}: native image return preserves catalog, ordinary later visits still refresh`, async (t) => {
+    let reads = 0;
+    const ctx = setup(t, { listCatalogProducts: async () => { reads++; return [product]; } });
+    const name = `pages/${page}/${page}.vue`;
+    const catalog = ctx.load(name, ['imagePreview', 'products', 'loading']);
+    await ctx.hooks.get(name)[0]();
+    const before = catalog.products.value;
+    catalog.imagePreview.start();
+    await ctx.hooks.get(name)[0]();
+    assert.equal(reads, 1);
+    assert.equal(catalog.products.value, before);
+    assert.equal(catalog.loading.value, false);
+    await ctx.hooks.get(name)[0]();
+    assert.equal(reads, 2);
+    catalog.imagePreview.start(); catalog.imagePreview.cancel();
+    await ctx.hooks.get(name)[0]();
+    assert.equal(reads, 3, 'failed preview must not suppress an ordinary page visit');
+  });
+}
+
+test('gallery keeps selected photo when a refreshed record contains the same image URLs', async (t) => {
+  const props = vue.reactive({ images: ['/uploads/front.jpg', '/uploads/back.jpg'] });
+  const ctx = setup(t, { props });
+  const gallery = ctx.load('components/ProductGallery.vue', ['current']);
+  await vue.nextTick();
+  gallery.current.value = 1;
+  props.images = ['/uploads/front.jpg', '/uploads/back.jpg'];
+  await vue.nextTick();
+  assert.equal(gallery.current.value, 1);
+  props.images = ['/uploads/new.jpg'];
+  await vue.nextTick();
+  assert.equal(gallery.current.value, 0);
+});
+
+test('native preview marks the return only after images resolve, and failure cancels the return', async (t) => {
+  const ctx = setup(t, { props: { images: ['/uploads/front.jpg'] } });
+  const gallery = ctx.load('components/ProductGallery.vue', ['preview']);
+  await gallery.preview(0);
+  assert.equal(ctx.emissions.at(-1).event, 'preview-start');
+  ctx.notices.at(-1).fail({ errMsg: 'preview:fail' });
+  assert.equal(ctx.emissions.at(-1).event, 'preview-failed');
 });

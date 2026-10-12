@@ -34,6 +34,19 @@ export function appointmentTimeChoices(date: string, slots: readonly BookedAppoi
   });
 }
 
+export function appointmentTimeFocus(choices: ReturnType<typeof appointmentTimeChoices>, selectedTime: string): string {
+  const available = choices.filter(choice => !choice.disabled);
+  if (!available.length) return '';
+  const selected = choices.find(choice => choice.time === selectedTime);
+  if (selected) return selected.disabled ? available[0].time : selected.time;
+  // Custom minute selections may not lie on the suggestion grid. Keep their hour in view.
+  const selectedMinutes = minutes(selectedTime);
+  if (!Number.isFinite(selectedMinutes)) return available[0].time;
+  return available.reduce((closest, choice) =>
+    Math.abs(minutes(choice.time) - selectedMinutes) < Math.abs(minutes(closest.time) - selectedMinutes) ? choice : closest,
+  ).time;
+}
+
 export function nextFutureAppointmentTime(now: Date, unavailableDates: readonly string[], requestedDate = storeDateKey(now)) {
   const today = storeDateKey(now);
   const date = new Date(`${requestedDate < today ? today : requestedDate}T00:00:00+08:00`);

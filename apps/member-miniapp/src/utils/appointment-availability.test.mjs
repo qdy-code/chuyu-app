@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { appointmentTimeConflicts, appointmentTimeChoices, appointmentTimePast, nextFutureAppointmentTime, nextMemberAppointment, storeDateKey } from './appointment-availability.ts';
+import { appointmentTimeConflicts, appointmentTimeChoices, appointmentTimeFocus, appointmentTimePast, nextFutureAppointmentTime, nextMemberAppointment, storeDateKey } from './appointment-availability.ts';
 
 const slot = (startTime, endTime) => ({ businessType: 'NAIL', appointmentDate: '2026-10-13', startTime, endTime });
 
@@ -45,4 +45,24 @@ test('next appointment excludes closed/past records and picks earliest future ac
   assert.equal(nextMemberAppointment(records, new Date('2026-10-12T10:00:00Z')).id, 'next');
   assert.equal(nextMemberAppointment([], new Date()), null);
   assert.equal(nextMemberAppointment([record('in-progress', '2026-10-12', '17:45')], new Date('2026-10-12T10:00:00Z')).id, 'in-progress');
+});
+
+test('afternoon entry targets first future available slot rather than expired morning times', () => {
+  const choices = appointmentTimeChoices('2026-10-13', [slot('14:30', '16:00')], new Date('2026-10-13T06:20:00Z'));
+  assert.equal(appointmentTimeFocus(choices, '10:00'), '16:00');
+  assert.equal(choices.filter(choice => choice.reason !== '已过')[0].time, '14:30');
+});
+
+test('a future afternoon selection or custom-minute draft stays in view without changing its value', () => {
+  const choices = appointmentTimeChoices('2026-10-14', [], new Date('2026-10-13T06:20:00Z'));
+  assert.equal(appointmentTimeFocus(choices, '18:00'), '18:00');
+  assert.equal(appointmentTimeFocus(choices, '18:07'), '18:00');
+  assert.equal(appointmentTimeFocus(choices, '18:08'), '18:15');
+});
+
+test('closing or fully occupied suggestions have no available scroll target', () => {
+  const ended = appointmentTimeChoices('2026-10-13', [], new Date('2026-10-13T13:00:00Z'));
+  assert.equal(appointmentTimeFocus(ended, '10:00'), '');
+  const occupied = appointmentTimeChoices('2026-10-14', [slot('09:00', '21:00'), slot('21:00', '21:00')], new Date('2026-10-13T06:20:00Z'));
+  assert.equal(appointmentTimeFocus(occupied, '14:00'), '');
 });

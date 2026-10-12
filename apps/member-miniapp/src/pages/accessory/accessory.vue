@@ -34,7 +34,7 @@
     </view>
     <view v-else class="product-list">
       <view v-for="item in products" :key="item.id" class="product-card">
-        <ProductGallery :images="item.images" />
+        <ProductGallery :images="item.images" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
         <view class="product-body">
           <text class="product-name">{{ item.name }}</text>
           <text class="product-desc">{{ item.description || '到店可试戴确认' }}</text>
@@ -80,6 +80,7 @@
 
 <script setup lang="ts">
 import ProductGallery from '@/components/ProductGallery.vue';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import StoreContact from '@/components/StoreContact.vue';
 import { referencePriceText } from '@/utils/catalog-display';
 import { computed, ref, watch } from 'vue';
@@ -137,6 +138,7 @@ const form = ref({ date: today.value, time: '10:00', remark: '' });
 const { slots: bookedSlots, loading: slotsLoading, ready: slotsReady, errorMessage: slotsError, refresh: refreshBookedSlots } = useBookedSlots('ACCESSORY', () => form.value.date);
 const isSelectedTimeBlocked = computed(() => isPast(form.value.date, form.value.time) || appointmentTimeConflicts(form.value.time, bookedSlots.value));
 function retryBookedSlots() { void refreshBookedSlots(); }
+const imagePreview = createImagePreviewReturnGuard();
 const catalogError = ref('');
 let catalogRevision = 0;
 
@@ -271,6 +273,7 @@ function isPast(date: string, time: string): boolean {
 }
 
 onShow(async () => {
+  if (imagePreview.consumeReturn()) return;
   today.value = formatDate(new Date());
   await Promise.all([loadCatalog(), loadUnavailableDates()]);
   const intent = takePendingBooking('ACCESSORY');
