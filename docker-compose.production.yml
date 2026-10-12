@@ -23,6 +23,7 @@ services:
     logging: *default-logging
 
   api:
+    image: ${COMPOSE_PROJECT_NAME:-chuyu-app}-api
     build: .
     container_name: chuyu-api
     restart: unless-stopped
@@ -68,6 +69,13 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    logging: *default-logging
+
+  migration:
+    image: ${COMPOSE_PROJECT_NAME:-chuyu-app}-api
+    profiles: ['tools']
+    environment:
+      DATABASE_URL: postgresql://chuyu:${DB_PASSWORD}@postgres:5432/member_platform?schema=public
     logging: *default-logging
 
   web:
