@@ -85,11 +85,6 @@
     </view>
 
     <template v-else>
-      <view v-if="needsProfileSetup" class="entry-card">
-        <text class="entry-title">完善头像和昵称</text>
-        <text class="entry-desc">可选择微信头像和昵称，保存到会员资料；也可稍后在账户资料中设置。</text>
-        <button class="primary-btn" @click="openProfileSetup">去完善资料</button>
-      </view>
       <view class="member-card" @click="openPage('/pages/card/card')">
         <image class="card-bg" src="/static/brand/member-card-bg.jpg" mode="aspectFill" />
         <view class="member-main">
@@ -105,21 +100,37 @@
 
       <AccountSyncStatus />
       <view class="stats-card">
-        <view class="stat">
+        <view class="stat" @click="openPage('/pages/card/card')">
           <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile?.balance)}` }}</text>
           <text class="stat-label">余额</text>
         </view>
         <view class="divider" />
-        <view class="stat">
+        <view class="stat" @click="openPage('/pages/card/card')">
           <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile?.points || 0 }}</text>
           <text class="stat-label">积分</text>
         </view>
-        <view class="divider" />
-        <view class="stat">
-          <text class="stat-value">{{ sessionState.profile?.phone || '-' }}</text>
-          <text class="stat-label">手机号</text>
+      </view>
+
+      <view class="section next-appointment">
+        <text class="section-title">下一次预约</text>
+        <text v-if="nextAppointmentLoading" class="entry-desc">正在查询预约...</text>
+        <view v-else-if="nextAppointmentError">
+          <text class="entry-desc">预约暂未更新，请重试。</text>
+          <button class="service-item" @click="loadNextAppointment">重新查询预约</button>
+        </view>
+        <view v-else-if="nextAppointment" @click="openPage('/pages/appointment/appointment')">
+          <text class="next-date">{{ nextAppointment.appointmentDate }} {{ nextAppointment.startTime }}</text>
+          <text class="next-title">{{ nextAppointment.productName || appointmentBusinessText(nextAppointment.businessType) }}</text>
+          <text class="next-status">{{ nextAppointment.status === 'PENDING' ? '待门店确认，请确认后再到店' : '预约已确认，按约到店' }}</text>
+          <button class="service-item" @click.stop="openPage('/pages/appointment/appointment')">查看预约详情</button>
+        </view>
+        <view v-else>
+          <text class="entry-desc">暂无待确认或已确认的到店安排。</text>
+          <button class="service-item" @click="openPage('/pages/appointment/appointment')">预约到店</button>
         </view>
       </view>
+
+      <StoreContact />
 
       <view class="section">
         <text class="section-title">我的服务</text>
@@ -131,19 +142,24 @@
           <button class="service-item" @click="openPage('/pages/messages/messages')">留言给门店</button>
         </view>
       </view>
+      <view v-if="needsProfileSetup" class="profile-tip" @click="openProfileSetup">
+        <text>头像和昵称可稍后完善</text><text>去完善 ›</text>
+      </view>
     </template>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import StoreContact from '@/components/StoreContact.vue';
+import { nextMemberAppointment } from '@/utils/appointment-availability';
 import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
 import { memberNumber } from '@/utils/member-display';
 import { resumePendingBooking } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState, setProfile } from '@/store/session';
-import { bindWechatPhone, createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
-import type { MemberLinkCode } from '@member-platform/shared';
+import { bindWechatPhone, createMemberLinkCode, listMyAppointments, readableErrorMessage, updateMyProfile } from '@/utils/api';
+import type { Appointment, BusinessType, MemberLinkCode } from '@member-platform/shared';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
   discountText,
@@ -165,6 +181,36 @@ const phoneInput = ref('');
 const showManualPhone = ref(false);
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
 const legalAccepted = ref(hasLegalConsent());
+const nextAppointment = ref<Appointment | null>(null);
+const nextAppointmentLoading = ref(false);
+const nextAppointmentError = ref('');
+let appointmentRevision = 0;
+watch(() => [sessionState.userId, sessionState.token], () => {
+  appointmentRevision++;
+  nextAppointment.value = null;
+  nextAppointmentLoading.value = false;
+  nextAppointmentError.value = '';
+}, { flush: 'sync' });
+
+function appointmentBusinessText(type: BusinessType): string {
+  return { NAIL: '美甲预约', ACCESSORY: '饰品预留', FLOWER: '取花预约' }[type];
+}
+
+async function loadNextAppointment() {
+  const request = ++appointmentRevision;
+  nextAppointment.value = null;
+  nextAppointmentError.value = '';
+  if (!sessionState.userId || !sessionState.token || !hasLegalConsent()) return;
+  nextAppointmentLoading.value = true;
+  try {
+    const records = await listMyAppointments();
+    if (request === appointmentRevision) nextAppointment.value = nextMemberAppointment(records);
+  } catch (error) {
+    if (request === appointmentRevision) nextAppointmentError.value = readableErrorMessage(error, '预约加载失败');
+  } finally {
+    if (request === appointmentRevision) nextAppointmentLoading.value = false;
+  }
+}
 
 const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
@@ -185,6 +231,7 @@ async function handleEnter() {
   try {
     await ensureSession();
     phoneInput.value = sessionState.profile?.phone || '';
+    void loadNextAppointment();
     resumePendingBooking();
   } catch (error) {
     console.error('[member login failed]', error);
@@ -202,6 +249,7 @@ function handleLegalConsentChange(event: { detail: { value: string[] } }) {
 function acceptLegalTerms() {
   legalAccepted.value = true;
   setLegalConsent(true);
+  void loadNextAppointment();
   resumePendingBooking();
 }
 
@@ -328,6 +376,7 @@ onShow(async () => {
   else await refreshSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
   if (resumePendingBooking()) return;
+  void loadNextAppointment();
   headerAvatarSrc.value = await resolveImageForDisplay(
     sessionState.profile?.avatarUrl,
     '/static/brand/logo-avatar-v2.png',
@@ -524,7 +573,7 @@ onShow(async () => {
 .member-card {
   overflow: hidden;
   margin-top: 32rpx;
-  min-height: 300rpx;
+  min-height: 220rpx;
   border-radius: 36rpx;
   padding: 38rpx;
   display: flex;
@@ -638,4 +687,9 @@ onShow(async () => {
   font-size: 27rpx;
   font-weight: 900;
 }
+.next-date, .next-title, .next-status { display: block; margin-top: 14rpx; }
+.next-date { color: #273247; font-size: 34rpx; font-weight: 800; }
+.next-title { color: #3d4652; font-size: 28rpx; }
+.next-status { margin-bottom: 20rpx; color: #72818d; font-size: 24rpx; line-height: 1.5; }
+.profile-tip { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20rpx; padding: 28rpx 12rpx; color: #72818d; font-size: 24rpx; }
 </style>

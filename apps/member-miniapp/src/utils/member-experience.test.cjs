@@ -26,6 +26,10 @@ function setup(t, overrides = {}, initialProfile = null) {
     showToast: (options) => notices.push(options),
     showLoading() {}, hideLoading() {},
     login: (options) => options.success({ code: 'test-login-code' }),
+    previewImage: (options) => notices.push(options),
+    makePhoneCall: (options) => notices.push(options),
+    openLocation: (options) => notices.push(options),
+    setClipboardData: (options) => notices.push(options),
   };
   const api = {
     getMyProfile: async () => serverProfile,
@@ -42,6 +46,7 @@ function setup(t, overrides = {}, initialProfile = null) {
     listAppointmentUnavailableDates: async () => [],
     listBookedAppointmentSlots: async () => [],
     listMyAppointments: async () => [],
+    toAbsoluteImageUrl: (source) => source.startsWith('http') ? source : `https://example.test${source}`,
     createAppointment: async (payload) => {
       payloads.push(payload);
       return { ...payload, id: 'appointment-test', productName: product.name, status: 'PENDING' };
@@ -63,7 +68,7 @@ function setup(t, overrides = {}, initialProfile = null) {
     let source = readFileSync(path, 'utf8');
     const pageHooks = [];
     if (name.endsWith('.vue')) source = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
-    source = source.replaceAll('import.meta.env', '({})');
+    source = source.replaceAll('import.meta.env', `(${JSON.stringify(overrides.env || {})})`);
     if (exportsToExpose.length) source += `\nexport { ${exportsToExpose.join(', ')} };`;
     const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
     const exports = {};
@@ -78,11 +83,11 @@ function setup(t, overrides = {}, initialProfile = null) {
       if (dependency.startsWith('@/')) return load(dependency.slice(2) + '.ts');
       throw new Error(`Unexpected dependency: ${dependency}`);
     };
-    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout }));
+    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout, defineProps: () => overrides.props || {} }));
     hooks.set(name, pageHooks);
     return exports;
   }
-  return { session, api, load, navigation, notices, payloads, hooks, cancel: () => { accept = false; } };
+  return { session, api, load, navigation, notices, payloads, hooks, runInScope: fn => scope.run(fn), cancel: () => { accept = false; } };
 }
 
 const product = { id: 'style-test', name: '月光晕染', images: [], businessType: 'NAIL' };
@@ -310,4 +315,150 @@ test('account status explains cached, loading, failed and successful states in t
   assert.match(component.message.value, /暂未更新，以下为上次同步数据/);
   ctx.session.profile = { ...linked, pospal: { state: 'UNLINKED' } };
   assert.match(component.message.value, /工作人员核验/);
+});
+
+test('gallery previews every unique product photo at the tapped index', async (t) => {
+  const ctx = setup(t, { props: { images: ['/uploads/front.jpg', '/uploads/back.jpg', '/uploads/front.jpg', ''] } });
+  const gallery = ctx.load('components/ProductGallery.vue', ['urls', 'preview']);
+  assert.equal(gallery.urls.value.length, 2);
+  await gallery.preview(1);
+  assert.equal(ctx.notices.at(-1).current, 'https://example.test/uploads/back.jpg');
+  assert.deepEqual(Array.from(ctx.notices.at(-1).urls), ['https://example.test/uploads/front.jpg', 'https://example.test/uploads/back.jpg']);
+});
+
+test('reference price preserves cents and unset price stays a confirmation message', (t) => {
+  const ctx = setup(t);
+  const display = ctx.load('utils/catalog-display.ts');
+  assert.equal(display.referencePriceText(128.5), '参考价 ¥128.50');
+  assert.equal(display.referencePriceText(), '参考价到店确认');
+});
+
+test('store actions use confirmed public contact without starting a real phone call', (t) => {
+  const ctx = setup(t, { env: { VITE_STORE_PHONE: '10086', VITE_STORE_ADDRESS: '测试地址', VITE_STORE_LATITUDE: '31.1', VITE_STORE_LONGITUDE: '121.1' } });
+  const contact = ctx.load('utils/store-contact.ts');
+  contact.callStore();
+  assert.equal(ctx.notices.at(-1).phoneNumber, '10086');
+  contact.navigateToStore();
+  assert.equal(ctx.notices.at(-1).latitude, 31.1);
+  assert.equal(ctx.notices.at(-1).longitude, 121.1);
+  assert.equal(ctx.notices.at(-1).address, '测试地址');
+  assert.equal(contact.normalizeStoreContact({ latitude: '', longitude: '' }).latitude, undefined);
+  assert.equal(contact.normalizeStoreContact({ latitude: 91, longitude: 121 }).latitude, undefined);
+});
+
+test('address without coordinates can be copied and missing contacts never invoke device actions', (t) => {
+  const ctx = setup(t, { env: { VITE_STORE_ADDRESS: '测试地址' } });
+  const contact = ctx.load('utils/store-contact.ts');
+  contact.navigateToStore();
+  assert.equal(ctx.notices.at(-1).data, '测试地址');
+  const count = ctx.notices.length;
+  contact.callStore();
+  assert.equal(ctx.notices.length, count);
+});
+
+test('member home shows earliest next appointment and exposes failed load/retry', async (t) => {
+  let fail = true;
+  const ctx = setup(t, { listMyAppointments: async () => { if (fail) throw Error('network'); return [{ id: 'next', appointmentDate: '2099-12-01', startTime: '14:30', endTime: '14:30', status: 'PENDING' }]; } }, linked);
+  authorize(ctx);
+  const home = ctx.load('pages/index/index.vue', ['loadNextAppointment', 'nextAppointment', 'nextAppointmentError']);
+  await home.loadNextAppointment();
+  assert.equal(home.nextAppointment.value, null);
+  assert.equal(home.nextAppointmentError.value, 'network');
+  fail = false;
+  await home.loadNextAppointment();
+  assert.equal(home.nextAppointment.value.id, 'next');
+  assert.equal(home.nextAppointmentError.value, '');
+});
+
+test('late next-appointment result after logout cannot restore private appointment', async (t) => {
+  let finish;
+  const ctx = setup(t, { listMyAppointments: () => new Promise(resolve => { finish = resolve; }) }, linked);
+  authorize(ctx);
+  const home = ctx.load('pages/index/index.vue', ['loadNextAppointment', 'nextAppointment']);
+  const pending = home.loadNextAppointment();
+  ctx.session.userId = ''; ctx.session.token = '';
+  finish([{ id: 'old', appointmentDate: '2099-12-01', startTime: '14:30', endTime: '14:30', status: 'CONFIRMED' }]);
+  await pending;
+  assert.equal(home.nextAppointment.value, null);
+});
+
+test('booked slot loading failure stays unavailable until retry and stale date results are discarded', async (t) => {
+  let finish;
+  let fail = true;
+  let date = vue.ref('2099-12-01');
+  const ctx = setup(t, { listBookedAppointmentSlots: async () => { if (fail) throw Error('network'); return new Promise(resolve => { finish = resolve; }); } }, linked);
+  const module = ctx.load('utils/use-booked-slots.ts');
+  const slots = ctx.runInScope(() => module.useBookedSlots('NAIL', () => date.value));
+  assert.equal(await slots.refresh(), false);
+  assert.equal(slots.ready.value, false);
+  assert.equal(slots.errorMessage.value, 'network');
+  fail = false;
+  const pending = slots.refresh();
+  date.value = '2099-12-02';
+  finish([{ startTime: '14:00', endTime: '15:00' }]);
+  assert.equal(await pending, false);
+  assert.equal(slots.slots.value.length, 0);
+});
+
+for (const [page, method] of [['appointment', 'submitAppointment'], ['accessory', 'submitReserve'], ['flower', 'submitReserve']]) {
+  test(`${page}: interval overlap is stopped before appointment creation`, async (t) => {
+    const ctx = setup(t, { listBookedAppointmentSlots: async () => [{ startTime: '14:30', endTime: '16:00' }] }, linked);
+    authorize(ctx);
+    const source = ctx.load(`pages/${page}/${page}.vue`, [method, 'form', ...(page === 'appointment' ? ['selectedTime'] : ['reserveProduct'])]);
+    if (page === 'appointment') { source.form.value.appointmentDate = '2099-12-01'; source.selectedTime.value = '14:15'; }
+    else { source.reserveProduct.value = product; source.form.value = { date: '2099-12-01', time: '14:15', remark: '' }; }
+    await source[method]();
+    assert.equal(ctx.payloads.length, 0);
+    assert.equal(ctx.notices.at(-1).title, '该时间已有确认预约');
+  });
+}
+
+test('nail booking remains optional-style and uses the explicitly selected time', async (t) => {
+  const ctx = setup(t, {}, linked); authorize(ctx);
+  const page = ctx.load('pages/appointment/appointment.vue', ['submitAppointment', 'form', 'selectedTime']);
+  page.form.value.appointmentDate = '2099-12-01'; page.selectedTime.value = '14:47';
+  await page.submitAppointment();
+  assert.equal(ctx.payloads.length, 1);
+  assert.equal(ctx.payloads[0].productId, undefined);
+  assert.equal(ctx.payloads[0].startTime, '14:47');
+});
+
+for (const page of ['nail', 'accessory', 'flower']) {
+  test(`${page}: failed catalog is distinct from an empty catalog and can be retried`, async (t) => {
+    let fail = true;
+    const ctx = setup(t, { listCatalogProducts: async () => { if (fail) throw Error('network'); return []; } });
+    const catalog = ctx.load(`pages/${page}/${page}.vue`, ['loadCatalog', 'catalogError', 'products']);
+    await catalog.loadCatalog();
+    assert.match(catalog.catalogError.value, /加载失败/);
+    fail = false; await catalog.loadCatalog();
+    assert.equal(catalog.catalogError.value, '');
+    assert.equal(catalog.products.value.length, 0);
+  });
+}
+
+for (const page of ['accessory', 'flower']) {
+  test(`${page}: repeated submit during availability refresh creates at most one appointment`, async (t) => {
+    let finish;
+    const ctx = setup(t, { listAppointmentUnavailableDates: () => new Promise(resolve => { finish = resolve; }) }, linked);
+    authorize(ctx);
+    const source = ctx.load(`pages/${page}/${page}.vue`, ['submitReserve', 'form', 'reserveProduct', 'submitting']);
+    source.reserveProduct.value = product; source.form.value = { date: '2099-12-01', time: '14:47', remark: '测试' };
+    const pending = source.submitReserve();
+    await new Promise(setImmediate);
+    assert.equal(source.submitting.value, true);
+    await source.submitReserve();
+    finish([]);
+    await pending;
+    assert.equal(ctx.payloads.length, 1);
+    assert.equal(source.submitting.value, false);
+  });
+}
+
+test('package photos use fullscreen viewing rather than passing an unsupported package URL to native preview', async (t) => {
+  const ctx = setup(t, { props: { images: ['/static/brand/member-card-bg.jpg', '/static/brand/account-header.jpg'] } });
+  const gallery = ctx.load('components/ProductGallery.vue', ['preview', 'current', 'showPackagePreview']);
+  await gallery.preview(1);
+  assert.equal(gallery.current.value, 1);
+  assert.equal(gallery.showPackagePreview.value, true);
+  assert.equal(ctx.notices.length, 0);
 });
