@@ -85,6 +85,11 @@
     </view>
 
     <template v-else>
+      <view v-if="needsProfileSetup" class="entry-card">
+        <text class="entry-title">完善头像和昵称</text>
+        <text class="entry-desc">可选择微信头像和昵称，保存到会员资料；也可稍后在账户资料中设置。</text>
+        <button class="primary-btn" @click="openProfileSetup">去完善资料</button>
+      </view>
       <view class="member-card" @click="openPage('/pages/card/card')">
         <image class="card-bg" src="/static/brand/member-card-bg.jpg" mode="aspectFill" />
         <view class="member-main">
@@ -161,6 +166,12 @@ const legalAccepted = ref(hasLegalConsent());
 
 const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
+const needsProfileSetup = computed(() => Boolean(sessionState.profile &&
+  (!sessionState.profile.avatarUrl || sessionState.profile.nickname === '微信用户')));
+
+function openProfileSetup() {
+  uni.navigateTo({ url: '/pages/account/account?setup=1' });
+}
 
 async function handleEnter() {
   if (loggingIn.value) return;
@@ -209,6 +220,7 @@ async function handleWechatPhone(event: { detail: { code?: string; errMsg?: stri
     setProfile(profile);
     phoneInput.value = profile.phone || '';
     uni.showToast({ title: '手机号已保存', icon: 'success' });
+    if (needsProfileSetup.value) openProfileSetup();
   } catch (error) {
     showManualPhone.value = true;
     uni.showModal({ title: '手机号未保存', content: readableErrorMessage(error, '授权失败，请重新授权或手动填写'), showCancel: false });
@@ -229,6 +241,7 @@ async function submitPhone() {
     await updateMyProfile({ phone });
     await refreshSessionProfile();
     uni.showToast({ title: '已完成', icon: 'success' });
+    if (needsProfileSetup.value) openProfileSetup();
   } catch (error) {
     const message = readableErrorMessage(error, '保存失败');
     if (message.includes('手机号已被其他会员使用')) {

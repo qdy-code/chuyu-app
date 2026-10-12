@@ -1,6 +1,11 @@
-import { BadGatewayException, INestApplication, ValidationPipe } from '@nestjs/common';
+import { BadGatewayException, ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import sharp from 'sharp';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { AppModule } from '../src/app.module';
 import { signToken } from '../src/common/token';
 import { PospalClientService } from '../src/modules/pospal/pospal-client.service';
@@ -8,7 +13,8 @@ import { DataStoreService } from '../src/store/data-store.service';
 import { PrismaService } from '../src/store/prisma.service';
 
 describe('Pospal identity and account flow (isolated PostgreSQL, mocked Pospal)', () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
+  let uploadDir: string;
   let prisma: PrismaService;
   let memberId: string;
   let token: string;
@@ -27,10 +33,13 @@ describe('Pospal identity and account flow (isolated PostgreSQL, mocked Pospal)'
   };
 
   beforeAll(async () => {
+    uploadDir = await mkdtemp(join(tmpdir(), 'chuyu-profile-e2e-'));
+    process.env.UPLOAD_DIR = uploadDir;
     Object.assign(process.env, { MINIAPP_LOGIN_MODE: 'mock', MINIAPP_MOCK_OPEN_ID: '', POSPAL_ACCOUNT_SOURCE: 'pospal' });
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PospalClientService).useValue(client).compile();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication<NestExpressApplication>();
+    app.useStaticAssets(uploadDir, { prefix: '/uploads/' });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));
     await app.init();
     prisma = moduleRef.get(PrismaService);
@@ -43,6 +52,7 @@ describe('Pospal identity and account flow (isolated PostgreSQL, mocked Pospal)'
 
   afterAll(async () => {
     if (app) await app.close();
+    if (uploadDir) await rm(uploadDir, { recursive: true, force: true });
     process.env = { ...originalEnv };
   });
 
@@ -84,5 +94,31 @@ describe('Pospal identity and account flow (isolated PostgreSQL, mocked Pospal)'
     const response = await request(app.getHttpServer()).get('/members/me').set('Authorization', `Bearer ${token}`).expect(502);
     expect(response.body.balance).toBeUndefined();
     expect((await prisma.member.findUniqueOrThrow({ where: { id: memberId } })).balance).toBe(55);
+  });
+
+  it('persists nickname and avatar for the authenticated member and serves the saved image', async () => {
+    const nickname = '测试微信昵称';
+    await request(app.getHttpServer()).put('/members/me').set('Authorization', `Bearer ${token}`)
+      .send({ nickname }).expect(200);
+    const image = await sharp({ create: { width: 32, height: 32, channels: 3, background: '#345678' } }).png().toBuffer();
+    const avatar = await request(app.getHttpServer()).post('/members/me/avatar').set('Authorization', `Bearer ${token}`)
+      .attach('file', image, { filename: 'test-avatar.png', contentType: 'image/png' }).expect(201);
+    expect(avatar.body.nickname).toBe(nickname);
+    expect(avatar.body.avatarUrl).toMatch(/^\/uploads\/avatar-.+\.jpg$/);
+    expect(avatar.body.balance).toBe(55);
+    const saved = await prisma.member.findUniqueOrThrow({ where: { id: memberId } });
+    expect(saved.nickname).toBe(nickname);
+    expect(saved.avatarUrl).toBe(avatar.body.avatarUrl);
+    const download = await request(app.getHttpServer()).get(saved.avatarUrl).expect(200).expect('Content-Type', /image\/jpeg/);
+    expect(await sharp(download.body).metadata()).toMatchObject({ width: 512, height: 512, format: 'jpeg' });
+    const members = await request(app.getHttpServer()).get('/admin/members')
+      .set('Authorization', `Bearer ${signToken('admin-001', 'admin')}`).expect(200);
+    expect(members.body.find((member: { id: string }) => member.id === memberId))
+      .toMatchObject({ nickname, avatarUrl: saved.avatarUrl });
+    await request(app.getHttpServer()).post('/members/me/avatar')
+      .attach('file', image, { filename: 'test.png', contentType: 'image/png' }).expect(401);
+    await request(app.getHttpServer()).put('/members/me').set('Authorization', `Bearer ${token}`)
+      .send({ nickname: '改名', userId: 'other-member' }).expect(400);
+    expect((await prisma.member.findUniqueOrThrow({ where: { id: memberId } })).nickname).toBe(nickname);
   });
 });
