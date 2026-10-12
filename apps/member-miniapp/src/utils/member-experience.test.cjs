@@ -90,7 +90,7 @@ function setup(t, overrides = {}, initialProfile = null) {
     hooks.set(name, pageHooks);
     return exports;
   }
-  return { session, api, load, navigation, notices, payloads, hooks, emissions, runInScope: fn => scope.run(fn), cancel: () => { accept = false; } };
+  return { session, storage, uni, api, load, navigation, notices, payloads, hooks, emissions, runInScope: fn => scope.run(fn), cancel: () => { accept = false; } };
 }
 
 const product = { id: 'style-test', name: '月光晕染', images: [], businessType: 'NAIL' };
@@ -102,6 +102,143 @@ function authorize(ctx) {
   member.setLegalConsent(true);
   return member;
 }
+
+test('favorites persist by member and business, survive a fresh module, and may be removed', (t) => {
+  const ctx = setup(t, {}, linked);
+  const favorites = ctx.load('utils/favorite-products.ts');
+  assert.equal(favorites.toggleFavorite(product), true);
+  favorites.toggleFavorite({ ...product, businessType: 'FLOWER' });
+  assert.equal(favorites.favoriteProducts.value.length, 2);
+  const restarted = setup(t, {}, linked);
+  restarted.storage.set('member-miniapp-favorites-v1:member-a', ctx.storage.get('member-miniapp-favorites-v1:member-a'));
+  const restored = restarted.load('utils/favorite-products.ts');
+  assert.equal(restored.favoriteProducts.value.length, 2);
+  assert.equal(restored.toggleFavorite(product), false);
+  assert.equal(restored.isFavorite(product), false);
+  assert.equal(restored.favoriteProducts.value[0].businessType, 'FLOWER');
+});
+
+test('favorites are hidden on logout and never carried into another member account', (t) => {
+  const ctx = setup(t, {}, linked);
+  const favorites = ctx.load('utils/favorite-products.ts');
+  favorites.toggleFavorite(product);
+  ctx.session.token = ''; ctx.session.userId = '';
+  assert.equal(favorites.favoriteProducts.value.length, 0);
+  assert.throws(() => favorites.toggleFavorite(product), /登录/);
+  ctx.session.userId = 'member-b'; ctx.session.token = 'token-b';
+  assert.equal(favorites.favoriteProducts.value.length, 0);
+  ctx.session.userId = linked.id; ctx.session.token = 'token-a';
+  assert.equal(favorites.isFavorite(product), true);
+});
+
+test('favorites handle malformed cache and storage failures without claiming a save or overwriting unread data', (t) => {
+  const ctx = setup(t, {}, linked);
+  const favorites = ctx.load('utils/favorite-products.ts');
+  assert.equal(favorites.normalizeFavorites([null, { id: 'x', name: 'bad', businessType: 'WRONG' }, product, product]).length, 1);
+  ctx.uni.setStorageSync = () => { throw Error('quota'); };
+  assert.throws(() => favorites.toggleFavorite(product), /未保存/);
+  assert.equal(favorites.favoriteProducts.value.length, 0);
+  ctx.uni.getStorageSync = () => { throw Error('read failure'); };
+  favorites.restoreFavorites();
+  assert.ok(favorites.favoriteStorageError.value);
+  assert.throws(() => favorites.toggleFavorite(product), /暂未读取/);
+});
+
+test('favorite button reflects a successful save and cancellation without creating any appointment', async (t) => {
+  const ctx = setup(t, { props: { product } }, linked); authorize(ctx);
+  const button = ctx.load('components/FavoriteButton.vue', ['toggle', 'saved']);
+  await button.toggle(); assert.equal(button.saved.value, true);
+  await button.toggle(); assert.equal(button.saved.value, false);
+  assert.equal(ctx.payloads.length, 0);
+});
+
+test('personal style history uses only completed nail appointments, newest first', (t) => {
+  const ctx = setup(t, {}, linked);
+  const { completedNailAppointments } = ctx.load('utils/repeat-booking.ts');
+  const base = { businessType: 'NAIL', startTime: '10:00' };
+  const records = [{ ...base, id: 'older', status: 'COMPLETED', appointmentDate: '2026-01-01' },
+    { ...base, id: 'pending', status: 'PENDING', appointmentDate: '2026-10-01' },
+    { ...base, id: 'recent', status: 'COMPLETED', appointmentDate: '2026-09-01' },
+    { ...base, id: 'cancelled', status: 'CANCELLED', appointmentDate: '2026-10-01' },
+    { ...base, id: 'flower', businessType: 'FLOWER', status: 'COMPLETED', appointmentDate: '2026-10-01' }];
+  assert.equal(completedNailAppointments(records).map(item => item.id).join(','), 'recent,older');
+  assert.equal(records[0].id, 'older');
+});
+
+test('repeat booking uses the current product and prepares a fresh application without old date, notes or status', async (t) => {
+  const ctx = setup(t, { listCatalogProducts: async () => [{ ...product, name: '更新后的款式' }] }, linked); authorize(ctx);
+  const { repeatBooking } = ctx.runInScope(() => ctx.load('utils/repeat-booking.ts').useRepeatBooking());
+  await repeatBooking({ businessType: 'NAIL', productId: product.id, appointmentDate: '2001-01-01', startTime: '10:00', remark: '旧私人备注', status: 'COMPLETED' });
+  const intent = ctx.load('utils/booking-flow.ts').takePendingBooking('NAIL');
+  assert.equal(intent.product.name, '更新后的款式');
+  assert.equal(intent.date, undefined); assert.equal(intent.time, undefined); assert.equal(intent.remark, undefined);
+  assert.equal(ctx.payloads.length, 0);
+  assert.equal(ctx.navigation[0], '/pages/appointment/appointment?booking=1');
+});
+
+test('repeat booking permits nails without a style, and a deleted style requires the member choice', async (t) => {
+  const ctx = setup(t, { listCatalogProducts: async () => [] }, linked); authorize(ctx);
+  const { repeatBooking } = ctx.runInScope(() => ctx.load('utils/repeat-booking.ts').useRepeatBooking());
+  ctx.cancel(); await repeatBooking({ businessType: 'NAIL', productId: 'deleted' });
+  assert.equal(ctx.navigation.length, 0);
+  await repeatBooking({ businessType: 'NAIL' });
+  assert.equal(ctx.load('utils/booking-flow.ts').takePendingBooking('NAIL').product, undefined);
+  const accepted = setup(t, { listCatalogProducts: async () => [] }, linked); authorize(accepted);
+  const action = accepted.runInScope(() => accepted.load('utils/repeat-booking.ts').useRepeatBooking());
+  await action.repeatBooking({ businessType: 'NAIL', productId: 'deleted' });
+  assert.equal(accepted.load('utils/booking-flow.ts').takePendingBooking('NAIL').product, undefined);
+  assert.equal(accepted.payloads.length, 0);
+});
+
+test('failed product lookup and unavailable accessory never become a silent style-free booking', async (t) => {
+  const ctx = setup(t, { listCatalogProducts: async () => { throw Error('网络连接不稳定'); } }, linked); authorize(ctx);
+  const action = ctx.runInScope(() => ctx.load('utils/repeat-booking.ts').useRepeatBooking());
+  await action.repeatBooking({ businessType: 'NAIL', productId: product.id });
+  assert.equal(ctx.navigation.length, 0); assert.match(ctx.notices.at(-1).content, /网络/);
+  ctx.api.listCatalogProducts = async () => [];
+  await action.repeatBooking({ businessType: 'ACCESSORY', productId: 'deleted' });
+  assert.equal(ctx.navigation.length, 0);
+  ctx.api.listCatalogProducts = async () => [{ ...product, businessType: 'ACCESSORY', reservedByUserId: 'someone-else' }];
+  await action.repeatBooking({ businessType: 'ACCESSORY', productId: product.id });
+  assert.equal(ctx.navigation.length, 0); assert.match(ctx.notices.at(-1).content, /已被预留/);
+});
+
+test('repeat booking ignores a product response after logout and suppresses repeated clicks', async (t) => {
+  let finish; let count = 0;
+  const ctx = setup(t, { listCatalogProducts: () => { count++; return new Promise(resolve => { finish = resolve; }); } }, linked); authorize(ctx);
+  const action = ctx.runInScope(() => ctx.load('utils/repeat-booking.ts').useRepeatBooking());
+  const pending = action.repeatBooking({ businessType: 'NAIL', productId: product.id });
+  await new Promise(setImmediate);
+  await action.repeatBooking({ businessType: 'NAIL', productId: product.id });
+  assert.equal(count, 1);
+  ctx.session.userId = ''; ctx.session.token = ''; ctx.session.profile = null;
+  finish([product]); await pending;
+  assert.equal(ctx.navigation.length, 0); assert.equal(ctx.payloads.length, 0); assert.equal(action.repeating.value, false);
+});
+
+test('favorites page keeps network failure distinct from a removed product and clears private history on member switch', async (t) => {
+  const ctx = setup(t, { listCatalogProducts: async type => { if (type === 'NAIL') throw Error('network'); return []; },
+    listMyAppointments: async () => [{ id: 'complete', businessType: 'NAIL', status: 'COMPLETED', appointmentDate: '2026-01-01', startTime: '10:00' }] }, linked);
+  authorize(ctx); ctx.load('utils/favorite-products.ts').toggleFavorite(product);
+  const page = ctx.load('pages/styles/styles.vue', ['loadCatalog', 'catalogErrors', 'currentProduct', 'selectTab', 'history', 'visibleFavorites']);
+  await page.loadCatalog(); assert.equal(page.catalogErrors.value.NAIL, true); assert.equal(page.currentProduct(product), undefined);
+  await page.selectTab('history'); assert.equal(page.history.value.length, 1);
+  ctx.session.userId = 'member-b'; ctx.session.token = 'token-b';
+  assert.equal(page.history.value.length, 0); assert.equal(page.visibleFavorites.value.length, 0);
+});
+
+test('rebooking accessories or flowers resets a stale category before loading the chosen product', async (t) => {
+  for (const [type, pageName] of [['ACCESSORY', 'accessory'], ['FLOWER', 'flower']]) {
+    const queries = [];
+    const item = { ...product, businessType: type, isActive: true };
+    const ctx = setup(t, { listCatalogProducts: async (business, category) => { queries.push(category); return category ? [] : [item]; } }, linked);
+    authorize(ctx); ctx.load('utils/booking-flow.ts').rememberBooking({ businessType: type, product: item });
+    const page = ctx.load(`pages/${pageName}/${pageName}.vue`, ['selectedCategoryId', 'reserveProduct']);
+    page.selectedCategoryId.value = 'old-category';
+    await ctx.hooks.get(`pages/${pageName}/${pageName}.vue`)[0]();
+    assert.equal(queries[0], undefined); assert.equal(page.reserveProduct.value.id, product.id); assert.equal(ctx.payloads.length, 0);
+  }
+});
 
 test('balance refresh failure exposes stale data, retry updates it, and parallel refreshes share one request', async (t) => {
   let fail = true;

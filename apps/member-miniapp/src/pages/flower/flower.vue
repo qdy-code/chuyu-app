@@ -39,6 +39,7 @@
           <text class="product-name">{{ item.name }}</text>
           <text class="product-desc">{{ item.description || '可预约到店取花' }}</text>
           <text class="product-note">花材、包装及取花准备时间，请与门店确认。</text>
+          <view class="favorite-row"><FavoriteButton :product="item" /></view>
           <view class="product-foot">
             <text class="price">{{ referencePriceText(item.referencePrice) }}</text>
             <button class="reserve-btn" @click="openReserve(item)">预约取花</button>
@@ -80,6 +81,7 @@
 
 <script setup lang="ts">
 import ProductGallery from '@/components/ProductGallery.vue';
+import FavoriteButton from '@/components/FavoriteButton.vue';
 import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import StoreContact from '@/components/StoreContact.vue';
 import { referencePriceText } from '@/utils/catalog-display';
@@ -275,8 +277,9 @@ function isPast(date: string, time: string): boolean {
 onShow(async () => {
   if (imagePreview.consumeReturn()) return;
   today.value = formatDate(new Date());
-  await Promise.all([loadCatalog(), loadUnavailableDates()]);
   const intent = takePendingBooking('FLOWER');
+  if (intent) selectedCategoryId.value = '';
+  await Promise.all([loadCatalog(), loadUnavailableDates()]);
   if (!intent) return;
   const product = products.value.find((item) => item.id === intent.product?.id);
   if (!product) {
@@ -288,6 +291,7 @@ onShow(async () => {
 </script>
 
 <style scoped>
+.favorite-row { display: flex; justify-content: flex-end; margin-top: 14rpx; }
 .page {
   position: relative;
   min-height: 100vh;

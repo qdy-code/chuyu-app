@@ -136,6 +136,7 @@
         <text class="section-title">我的服务</text>
         <view class="service-grid">
           <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>
+          <button class="service-item" @click="openPage('/pages/styles/styles')">收藏与款式</button>
           <button class="service-item" @click="openPage('/pages/consumptions/consumptions')">消费记录</button>
           <button class="service-item" @click="openPage('/pages/recharge/recharge')">充值记录</button>
           <button class="service-item" @click="openPage('/pages/account/account')">账户资料</button>

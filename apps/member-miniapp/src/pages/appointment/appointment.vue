@@ -158,6 +158,7 @@
                 @click.stop="previewAppointmentProduct(item)"
               />
             </view>
+            <button v-if="item.status === 'COMPLETED'" class="repeat-button" :disabled="repeating" @click="repeatBooking(item)">再次预约</button>
           </view>
         </scroll-view>
       </view>
@@ -172,6 +173,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import BookingReceipt from '@/components/BookingReceipt.vue';
 import BookingTimePicker from '@/components/BookingTimePicker.vue';
 import StoreContact from '@/components/StoreContact.vue';
+import { useRepeatBooking } from '@/utils/repeat-booking';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import { appointmentTimeConflicts, appointmentTimePast, nextFutureAppointmentTime, storeDateKey } from '@/utils/appointment-availability';
 import { useBookedSlots } from '@/utils/use-booked-slots';
 import { rememberBooking, takePendingBooking } from '@/utils/booking-flow';
@@ -209,6 +212,8 @@ const pageError = ref('');
 const showBookingPanel = ref(false);
 const showRecordsPanel = ref(false);
 const appointments = ref<Appointment[]>([]);
+const { repeating, repeatBooking } = useRepeatBooking();
+const imagePreview = createImagePreviewReturnGuard();
 watch(() => [sessionState.userId, sessionState.token], () => {
   submittedAppointment.value = null;
   appointments.value = [];
@@ -341,9 +346,11 @@ function appointmentImageSrc(item: Appointment): string {
 function previewAppointmentProduct(item: Appointment) {
   const urls = (item.productImages || []).map((image) => toAbsoluteImageUrl(image));
   if (urls.length === 0) return;
+  imagePreview.start();
   uni.previewImage({
     current: urls[0],
     urls,
+    fail: () => { imagePreview.cancel(); uni.showToast({ title: '图片预览失败，请重试', icon: 'none' }); },
   });
 }
 
@@ -524,7 +531,7 @@ async function refreshPage() {
   }
 }
 
-onShow(refreshPage);
+onShow(() => { if (!imagePreview.consumeReturn()) return refreshPage(); });
 
 function ensureFutureTimeSelection() {
   nowTick.value = Date.now();
@@ -539,6 +546,8 @@ function ensureFutureTimeSelection() {
 </script>
 
 <style scoped>
+.repeat-button { margin: 20rpx 0 0; border-radius: 999rpx; background: #edf2f4; color: #3d4652; font-size: 25rpx; }
+.repeat-button::after { border: 0; }
 .page {
   position: relative;
   min-height: 100vh;

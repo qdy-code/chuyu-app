@@ -3,7 +3,7 @@
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
       <text class="header-title">隐私政策</text>
-      <text class="header-desc">最后更新日期：2026-10-11</text>
+      <text class="header-desc">最后更新日期：2026-10-12</text>
     </view>
 
     <view class="card">
@@ -35,6 +35,7 @@
       <text class="section-title">四、信息如何保存</text>
       <text class="bullet">• 数据加密传输（HTTPS / TLS 1.2+）。</text>
       <text class="bullet">• 数据存储在境内服务器，仅经授权的门店运营人员和必要的技术维护人员可访问。</text>
+      <text class="bullet">• 收藏保存在当前设备的小程序缓存中，按会员账户区分，不同步到服务器；可逐条取消收藏，清除小程序缓存后收藏也会清除。</text>
       <text class="bullet">• 我们不会留存你的微信会话密钥（session_key），登录后即丢弃。</text>
       <text class="bullet">• 信息保存期限以提供会员服务所需的最短期限为限；法律法规另有要求的除外。</text>
     </view>

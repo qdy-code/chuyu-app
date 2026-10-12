@@ -40,6 +40,7 @@
             <text class="product-desc">{{ item.description || '到店沟通款式细节' }}</text>
           </view>
           <text class="product-note">参考价、服务时长及卸甲等加项，请与门店确认。</text>
+          <view class="favorite-row"><FavoriteButton :product="item" /></view>
           <view class="product-foot">
             <text class="price">{{ referencePriceText(item.referencePrice) }}</text>
             <button class="reserve-btn" @click="openAppointment(item)">预约此款</button>
@@ -53,6 +54,7 @@
 
 <script setup lang="ts">
 import ProductGallery from '@/components/ProductGallery.vue';
+import FavoriteButton from '@/components/FavoriteButton.vue';
 import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import StoreContact from '@/components/StoreContact.vue';
 import { referencePriceText } from '@/utils/catalog-display';
@@ -138,6 +140,7 @@ onShow(() => {
 </script>
 
 <style scoped>
+.favorite-row { display: flex; justify-content: flex-end; margin-top: 14rpx; }
 .page {
   position: relative;
   min-height: 100vh;
