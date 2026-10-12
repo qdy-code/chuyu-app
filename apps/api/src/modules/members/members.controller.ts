@@ -31,21 +31,23 @@ import { DataStoreService } from '../../store/data-store.service';
 import { WechatMiniappService } from '../wechat/wechat-miniapp.service';
 import { BindWechatPhoneDto, CreateAppointmentDto, CreateMemberLinkCodeDto, CreateMemberMessageDto, UpdateMyProfileDto } from './dto';
 import { getUploadDir } from '../../config/upload-path';
+import { PospalService } from '../pospal/pospal.service';
+import { usesPospalAccounts } from '../pospal/account-source';
 
 @Controller('members')
 export class MembersController {
   constructor(
     private readonly store: DataStoreService,
     private readonly wechatMiniapp: WechatMiniappService,
+    private readonly pospal: PospalService,
   ) {}
 
   @Get('me')
   async getMe(@Headers('x-user-id') userId?: string): Promise<MemberProfile> {
-    const member = userId ? await this.store.getMemberById(userId) : undefined;
-    if (!member) {
+    if (!userId) {
       throw new NotFoundException('member not found');
     }
-    return member;
+    return this.pospal.accountProfile(userId);
   }
 
   @Patch('me')
@@ -79,7 +81,7 @@ export class MembersController {
       }
       throw new BadRequestException(result.reason || 'failed to update member');
     }
-    return result.member;
+    return this.pospal.cachedAccountProfile(userId);
   }
 
   @Post('me/avatar')
@@ -118,7 +120,7 @@ export class MembersController {
     if (!result.member) {
       throw new BadRequestException(result.reason || 'failed to update avatar');
     }
-    return result.member;
+    return this.pospal.cachedAccountProfile(userId);
   }
 
   @Post('me/link-code')
@@ -143,7 +145,7 @@ export class MembersController {
       }
       throw new BadRequestException(result.reason || 'failed to bind phone');
     }
-    return result.member;
+    return this.pospal.cachedAccountProfile(userId);
   }
 
   @Get('me/appointments')
@@ -163,6 +165,7 @@ export class MembersController {
   @Get('me/points-ledger')
   async listMyPointsLedger(@Headers('x-user-id') userId: string | undefined) {
     if (!userId) throw new NotFoundException('member not found');
+    if (usesPospalAccounts()) return [];
     return this.store.listPointsLedger(userId);
   }
 

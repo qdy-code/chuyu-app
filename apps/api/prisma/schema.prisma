@@ -22,6 +22,7 @@ model Member {
   points       Float
   accountIdChangedAt DateTime?
   deletedAt    DateTime?
+  pospalLink   PospalMemberLink?
 
   @@index([levelId])
 }
@@ -31,6 +32,16 @@ model MemberLevel {
   name         String
   minPoints    Int
   discountRate Float
+}
+
+model PospalMemberLink {
+  memberId       String   @id
+  customerUid    String   @unique
+  customerNumber String
+  account        String
+  createdAt      DateTime @default(now())
+  lastSyncedAt   DateTime?
+  member         Member   @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model RechargeOrder {

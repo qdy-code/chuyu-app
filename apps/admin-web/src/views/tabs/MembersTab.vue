@@ -3,6 +3,7 @@ import { computed, h, ref } from 'vue';
 import type { DataTableColumns } from 'naive-ui';
 import {
   NAvatar,
+  NAlert,
   NButton,
   NCard,
   NCheckbox,
@@ -41,7 +42,7 @@ interface EditRow {
   adjustmentReason: string;
 }
 
-const { members, levels, levelUsageCounts, loadAll } = useDataStore();
+const { members, levels, levelUsageCounts, loadAll, pospalAccounts } = useDataStore();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -188,8 +189,7 @@ async function saveMember(originId: string) {
       nickname: row.nickname.trim(),
       remark: row.remark.trim() || undefined,
       birthday: row.birthday || undefined,
-      levelId: row.levelId,
-      discountRate: Number(row.discountRate),
+      ...(!pospalAccounts.value ? { levelId: row.levelId, discountRate: Number(row.discountRate) } : {}),
       ...(balanceChanged ? { balance: Number(row.balance), expectedBalance: row.baseBalance } : {}),
       ...(pointsChanged ? { points: Number(row.points), expectedPoints: row.basePoints } : {}),
       adjustmentReason: row.adjustmentReason.trim() || undefined,
@@ -362,6 +362,7 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
     key: 'levelId',
     width: 200,
     render: (row) => {
+      if (pospalAccounts.value) return h('span', row.pospal?.state === 'LINKED' ? row.levelName : '待关联');
       const editRow = syncEditRow(row);
       return h(NSelect, {
         value: editRow.levelId,
@@ -379,6 +380,7 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
       const editRow = syncEditRow(row);
       return h(NInputNumber, {
         value: editRow.discountRate,
+        disabled: pospalAccounts.value,
         size: 'small',
         step: 0.05,
         min: 0.1,
@@ -395,7 +397,9 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
     render: (row) => {
       const editRow = syncEditRow(row);
       return h(NInputNumber, {
-        value: editRow.balance,
+        value: row.pospal?.state === 'UNLINKED' ? null : editRow.balance,
+        placeholder: row.pospal?.state === 'UNLINKED' ? '待关联' : undefined,
+        disabled: pospalAccounts.value,
         size: 'small',
         step: 1,
         min: 0,
@@ -411,7 +415,9 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
     render: (row) => {
       const editRow = syncEditRow(row);
       return h(NInputNumber, {
-        value: editRow.points,
+        value: row.pospal?.state === 'UNLINKED' ? null : editRow.points,
+        placeholder: row.pospal?.state === 'UNLINKED' ? '待关联' : undefined,
+        disabled: pospalAccounts.value,
         size: 'small',
         step: 1,
         min: 0,
@@ -550,6 +556,7 @@ function bulkCheckPending() {
 
 <template>
   <NSpace vertical :size="20">
+    <NAlert v-if="pospalAccounts" type="info">余额与积分由银豹统一管理，列表显示最近同步的数值。充值、消费和积分调整请在银豹操作。</NAlert>
     <NCard title="新增会员" :bordered="false" class="surface">
       <div class="form-grid">
         <NInput v-model:value="memberForm.nickname" placeholder="昵称 *" />
@@ -557,18 +564,20 @@ function bulkCheckPending() {
         <NInput v-model:value="memberForm.phone" placeholder="手机号（可选）" />
         <NSelect
           v-model:value="memberForm.levelId"
+          :disabled="pospalAccounts"
           :options="levelOptions"
           placeholder="选择等级"
         />
         <NInputNumber
           v-model:value="memberForm.discountRate"
+          :disabled="pospalAccounts"
           :step="0.05"
           :min="0.1"
           :max="1"
           placeholder="折扣率"
         />
-        <NInputNumber v-model:value="memberForm.balance" :min="0" :step="1" placeholder="初始余额" />
-        <NInputNumber v-model:value="memberForm.points" :min="0" :step="1" placeholder="初始积分" />
+        <NInputNumber v-model:value="memberForm.balance" :disabled="pospalAccounts" :min="0" :step="1" placeholder="初始余额" />
+        <NInputNumber v-model:value="memberForm.points" :disabled="pospalAccounts" :min="0" :step="1" placeholder="初始积分" />
         <NInput v-model:value="memberForm.birthday" maxlength="5" placeholder="生日月日（MM-DD）" clearable />
         <NInput v-model:value="memberForm.remark" placeholder="备注" />
         <NButton type="primary" :loading="creating" @click="createMember">

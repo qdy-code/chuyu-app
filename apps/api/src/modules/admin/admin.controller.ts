@@ -36,6 +36,7 @@ import {
 } from '@member-platform/shared';
 import { getUploadDir } from '../../config/upload-path';
 import { DataStoreService } from '../../store/data-store.service';
+import { PospalService } from '../pospal/pospal.service';
 import {
   AdminRechargeDto,
   ConfirmMemberLinkDto,
@@ -73,11 +74,11 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly store: DataStoreService) {}
+  constructor(private readonly store: DataStoreService, private readonly pospal: PospalService) {}
 
   @Get('members')
   listMembers(): Promise<MemberProfile[]> {
-    return this.store.listMembers();
+    return this.pospal.listAccountMembers();
   }
 
   @Post('members')
@@ -91,11 +92,7 @@ export class AdminController {
 
   @Get('members/:id')
   async detailMember(@Param('id') id: string): Promise<MemberProfile> {
-    const member = await this.store.getMemberById(id);
-    if (!member) {
-      throw new NotFoundException('member not found');
-    }
-    return member;
+    return this.pospal.accountProfile(id);
   }
 
   @Post('members/:id/wechat-link')
@@ -145,7 +142,7 @@ export class AdminController {
     if (!member) {
       throw new NotFoundException('member not found');
     }
-    return this.store.listConsumptionOrders(id);
+    return this.pospal.consumptions(id);
   }
 
   @Get('messages')

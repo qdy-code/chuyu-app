@@ -15,6 +15,17 @@ describe('validateProductionEnv', () => {
     expect(() => validateProductionEnv()).not.toThrow();
   });
 
+  it('rejects incomplete or misspelled Pospal accounting configuration', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.POSPAL_ACCOUNT_SOURCE = 'pospal';
+    process.env.POSPAL_ENABLED = 'false';
+    delete process.env.POSPAL_APP_KEY;
+    expect(() => validateProductionEnv()).toThrow('POSPAL_ENABLED=true');
+    expect(() => validateProductionEnv()).toThrow('POSPAL_APP_KEY');
+    process.env.POSPAL_ACCOUNT_SOURCE = 'pospla';
+    expect(() => validateProductionEnv()).toThrow('POSPAL_ACCOUNT_SOURCE');
+  });
+
   it('rejects development credentials in production', () => {
     Object.assign(process.env, {
       NODE_ENV: 'production',

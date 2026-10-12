@@ -17,6 +17,9 @@ import type {
   CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  PospalConfiguration,
+  PospalConnectionCheck,
+  PospalMemberPreview,
   ConfirmMemberLinkRequest,
   ProductCategory,
   ProductType,
@@ -183,6 +186,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getPospalStatus: () => request<PospalConfiguration>('/admin/pospal/status'),
+  testPospalConnection: () => request<PospalConnectionCheck>('/admin/pospal/connection-test', { method: 'POST' }),
+  previewPospalMember: (id: string) => request<PospalMemberPreview>(`/admin/pospal/members/${encodeURIComponent(id)}/preview`, { method: 'POST' }),
+  linkPospalMember: (id: string, customerUid: string) => request<{ customerNumber: string }>(`/admin/pospal/members/${encodeURIComponent(id)}/link`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customerUid, identityVerified: true }),
+  }),
   listMembers: () => request<MemberProfile[]>('/admin/members'),
   createMember: (payload: CreateMemberRequest) =>
     request<MemberProfile>('/admin/members', {

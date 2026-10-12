@@ -54,6 +54,7 @@ import { AdminUser, createDefaultStore, DataStore, isFinalStatus } from './types
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from './prisma.service';
 import { buildRevenueOverview } from './revenue-summary';
+import { assertLocalAccountingAllowed, usesPospalAccounts } from '../modules/pospal/account-source';
 
 type DbMember = {
   id: string;
@@ -231,6 +232,7 @@ export class DataStoreService {
     const seed = createDefaultStore();
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.pospalMemberLink.deleteMany();
       await tx.memberLinkRequest.deleteMany();
       await tx.mutationReceipt.deleteMany();
       await tx.memberMessage.deleteMany();
@@ -428,6 +430,7 @@ export class DataStoreService {
   }
 
   async createMember(payload: CreateMemberRequest): Promise<{ member?: MemberProfile; reason?: string }> {
+    if (payload.balance || payload.points) assertLocalAccountingAllowed();
     await this.ensureBootstrapData();
     return this.withWriteTransaction(async (tx) => {
       const memberId = payload.id?.trim() || (await this.generateMemberNumber(tx));
@@ -627,6 +630,7 @@ export class DataStoreService {
   }
 
   async applyRecharge(userId: string, payload: RechargeApplyRequest): Promise<RechargeOrder> {
+    assertLocalAccountingAllowed();
     return this.withWriteTransaction(async (tx) => {
       const existing = await tx.rechargeOrder.findMany({
         select: { id: true },
@@ -667,6 +671,7 @@ export class DataStoreService {
     adminId: string,
     payload: AdminRechargeRequest,
   ): Promise<{ member?: MemberProfile; order?: RechargeOrder; reason?: string }> {
+    assertLocalAccountingAllowed();
     const amount = this.round2(payload.amount ?? 0);
     const points = this.round2(payload.points ?? 0);
     if (amount <= 0 && points <= 0) {
@@ -768,6 +773,7 @@ export class DataStoreService {
     adminId: string,
     comment?: string,
   ): Promise<RechargeOrder | undefined> {
+    assertLocalAccountingAllowed();
     return this.withWriteTransaction(async (tx) => {
       const order = await tx.rechargeOrder.findUnique({ where: { id: orderId } });
       if (!order || isFinalStatus(order.status as RechargeStatus)) {
@@ -890,6 +896,7 @@ export class DataStoreService {
     orderId: string,
     adminId: string,
   ): Promise<{ success: boolean; reason?: string }> {
+    assertLocalAccountingAllowed();
     return this.withWriteTransaction(async (tx) => {
       const order = await tx.consumptionOrder.findUnique({ where: { id: orderId } });
       if (!order || order.voidedAt) {
@@ -979,6 +986,7 @@ export class DataStoreService {
     adminId: string,
     payload: CreateConsumptionOrderRequest,
   ): Promise<{ order?: ConsumptionOrder; reason?: string }> {
+    assertLocalAccountingAllowed();
     return this.withWriteTransaction(async (tx) => {
       const user = await tx.member.findUnique({ where: { id: payload.userId } });
       if (!user || user.deletedAt) {
@@ -2015,6 +2023,7 @@ export class DataStoreService {
     memberId: string,
     payload: UpdateMemberRequest,
   ): Promise<{ member?: MemberProfile; reason?: string }> {
+    if (payload.balance !== undefined || payload.points !== undefined || payload.levelId !== undefined || payload.discountRate !== undefined) assertLocalAccountingAllowed();
     return this.withWriteTransaction(async (tx) => {
       const member = await tx.member.findUnique({ where: { id: memberId } });
       if (!member || member.deletedAt) {
@@ -2102,6 +2111,9 @@ export class DataStoreService {
     memberId: string,
     adminId: string,
   ): Promise<{ success: boolean; reason?: string }> {
+    if (usesPospalAccounts() && await this.prisma.pospalMemberLink.findUnique({ where: { memberId } })) {
+      return { success: false, reason: '该会员已关联银豹，请先由门店核对收银系统账户，不能删除关联记录' };
+    }
     return this.withWriteTransaction(async (tx) => {
       const member = await tx.member.findUnique({ where: { id: memberId } });
       if (!member || member.deletedAt) {

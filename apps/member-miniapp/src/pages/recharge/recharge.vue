@@ -4,6 +4,7 @@
     <view class="header-card">
       <text class="header-title">充值记录</text>
       <text class="header-desc">余额与积分分别记录</text>
+      <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银系统充值记录</text>
     </view>
 
     <view class="card">
@@ -21,11 +22,12 @@
         </view>
         <text class="record-meta">充值单号：{{ item.id }}</text>
         <text class="record-meta">时间：{{ formatDate(item.createdAt) }}</text>
+        <text v-if="item.giftAmount" class="record-meta">赠送金额：¥{{ formatMoney(item.giftAmount) }}</text>
         <text v-if="item.rejectReason" class="reject">拒绝原因：{{ item.rejectReason }}</text>
       </view>
     </view>
 
-    <view class="card">
+    <view v-if="!sessionState.profile?.pospal" class="card">
       <text class="section-title">积分明细</text>
       <view v-if="pointsLoading" class="empty-line">正在加载积分明细...</view>
       <view v-else-if="pointsError" class="empty-line">
@@ -43,6 +45,7 @@
         <text v-if="item.relatedOrderId" class="record-meta">关联单号：{{ item.relatedOrderId }}</text>
       </view>
     </view>
+    <view v-if="sessionState.profile?.pospal" class="card">当前积分从收银系统同步；积分变动明细请联系门店查询。</view>
   </view>
 </template>
 
@@ -51,6 +54,7 @@ import { onShow } from '@dcloudio/uni-app';
 import { listMyRecharges, listMyPointsLedger } from '@/utils/api';
 import { formatMoney, statusClass, statusText } from '@/utils/member';
 import { useMemberRecords } from '@/utils/use-member-records';
+import { sessionState } from '@/store/session';
 
 const { records, loading, loaded, errorMessage, refresh: refreshMoney } = useMemberRecords(listMyRecharges);
 const { records: pointsRecords, loading: pointsLoading, loaded: pointsLoaded,

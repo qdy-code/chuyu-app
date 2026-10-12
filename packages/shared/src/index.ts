@@ -29,6 +29,42 @@ export interface MemberProfile {
   discountRate: number;
   balance: number;
   points: number;
+  pospal?: { state: 'UNLINKED' | 'LINKED'; customerNumber?: string; syncedAt?: string };
+}
+
+export interface PospalConfiguration {
+  enabled: boolean;
+  configured: boolean;
+  missingEnv: string[];
+  readOnly: true;
+  accountSource: 'local' | 'pospal';
+}
+
+export interface PospalConnectionCheck {
+  requestId: string;
+  checkedAt: string;
+  stores: { userId: string; company: string; self: boolean }[];
+  hasMore: boolean;
+}
+
+export interface PospalMemberCandidate {
+  uid: string;
+  number: string;
+  name: string;
+  balance: number;
+  giftBalance: number;
+  points: number;
+}
+
+export interface PospalMemberPreview {
+  memberId: string;
+  state: 'NO_PHONE' | 'NOT_FOUND' | 'AMBIGUOUS' | 'CANDIDATE';
+  local: { balance: number; points: number };
+  candidates: PospalMemberCandidate[];
+  hasMore: boolean;
+  requestId?: string;
+  difference?: { balance: number; points: number };
+  bindingConfirmed: false;
 }
 
 export interface CreateMemberRequest {
@@ -135,6 +171,8 @@ export interface RechargeOrder {
   rejectReason?: string;
   createdAt: string;
   updatedAt: string;
+  source?: 'POSPAL';
+  giftAmount?: number;
 }
 
 export interface BalanceLedger {
@@ -160,6 +198,7 @@ export interface ConsumptionOrder {
   remark?: string;
   createdBy: string;
   createdAt: string;
+  source?: 'POSPAL';
 }
 
 export interface RevenuePeriodSummary {

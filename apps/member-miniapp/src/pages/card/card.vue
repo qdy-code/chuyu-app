@@ -14,23 +14,27 @@
         <text class="level">{{ sessionState.profile.levelName }}</text>
         <view class="code-box">
           <text class="code-title">会员号</text>
-          <text class="member-id">{{ sessionState.profile.id }}</text>
+          <text class="member-id">{{ sessionState.profile.pospal?.customerNumber || sessionState.profile.id }}</text>
         </view>
       </view>
 
       <view class="stats-card">
         <view class="stat">
-          <text class="stat-value">¥{{ formatMoney(sessionState.profile.balance) }}</text>
+          <text class="stat-value">{{ sessionState.profile.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile.balance)}` }}</text>
           <text class="stat-label">账户余额</text>
         </view>
         <view class="stat">
-          <text class="stat-value">{{ sessionState.profile.points }}</text>
+          <text class="stat-value">{{ sessionState.profile.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile.points }}</text>
           <text class="stat-label">当前积分</text>
         </view>
         <view class="stat">
           <text class="stat-value">{{ discountText(sessionState.profile.discountRate) }}</text>
           <text class="stat-label">会员折扣</text>
         </view>
+      </view>
+      <view v-if="sessionState.profile.pospal" class="empty-card">
+        <text>{{ sessionState.profile.pospal.state === 'LINKED' ? '余额和积分已从门店收银系统同步' : '请联系门店关联收银系统会员卡' }}</text>
+        <text v-if="sessionState.profile.pospal.syncedAt">上次同步：{{ new Date(sessionState.profile.pospal.syncedAt).toLocaleString() }}</text>
       </view>
     </template>
   </view>

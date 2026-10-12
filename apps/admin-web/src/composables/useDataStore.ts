@@ -8,6 +8,7 @@ import type {
   ConsumptionOrder,
   MemberLevel,
   MemberProfile,
+  PospalConfiguration,
   ProductCategory,
   ProductType,
   RechargeOrder,
@@ -24,6 +25,8 @@ const orders = ref<ConsumptionOrder[]>([]);
 const appointments = ref<Appointment[]>([]);
 const logs = ref<AuditLog[]>([]);
 const memberMessages = ref<AdminMemberMessage[]>([]);
+const pospalConfiguration = ref<PospalConfiguration | null>(null);
+const pospalAccounts = computed(() => pospalConfiguration.value?.accountSource === 'pospal');
 
 const loading = ref(false);
 const error = ref('');
@@ -46,6 +49,7 @@ async function loadAll(): Promise<void> {
       orderList,
       appointmentList,
       auditList,
+      pospalStatus,
     ] = await Promise.all([
       api.listMembers(),
       api.listLevels(),
@@ -60,6 +64,7 @@ async function loadAll(): Promise<void> {
       api.listConsumptionOrders(),
       api.listAppointments(),
       api.listAuditLogs(),
+      api.getPospalStatus(),
     ]);
     members.value = memberList;
     levels.value = levelList;
@@ -70,6 +75,7 @@ async function loadAll(): Promise<void> {
     orders.value = orderList;
     appointments.value = appointmentList;
     logs.value = auditList;
+    pospalConfiguration.value = pospalStatus;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -112,6 +118,7 @@ const levelUsageCounts = computed<Record<string, number>>(() => {
 export function useDataStore() {
   return {
     members,
+    pospalAccounts,
     levels,
     productTypes,
     productCategories,

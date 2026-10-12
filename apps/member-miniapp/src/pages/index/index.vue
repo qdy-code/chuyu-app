@@ -79,7 +79,7 @@
         <view class="member-main">
           <text class="card-label">我的会员卡</text>
           <text class="card-title">{{ sessionState.profile?.levelName || '会员' }}</text>
-          <text class="card-desc">会员号：{{ sessionState.profile?.id }}</text>
+          <text class="card-desc">会员号：{{ sessionState.profile?.pospal?.customerNumber || sessionState.profile?.id }}</text>
         </view>
         <view class="discount-badge">
           <text class="discount-value">{{ discountText(sessionState.profile?.discountRate) }}</text>
@@ -89,12 +89,12 @@
 
       <view class="stats-card">
         <view class="stat">
-          <text class="stat-value">¥{{ formatMoney(sessionState.profile?.balance) }}</text>
+          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile?.balance)}` }}</text>
           <text class="stat-label">余额</text>
         </view>
         <view class="divider" />
         <view class="stat">
-          <text class="stat-value">{{ sessionState.profile?.points || 0 }}</text>
+          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile?.points || 0 }}</text>
           <text class="stat-label">积分</text>
         </view>
         <view class="divider" />
@@ -105,6 +105,8 @@
       </view>
 
       <view class="section">
+        <text v-if="sessionState.profile?.pospal?.state === 'UNLINKED'" class="card-desc">请联系门店关联银豹会员卡后查看余额和积分。</text>
+        <text v-if="sessionState.profile?.pospal?.syncedAt" class="card-desc">收银账务上次同步：{{ new Date(sessionState.profile.pospal.syncedAt).toLocaleString() }}</text>
         <text class="section-title">我的服务</text>
         <view class="service-grid">
           <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>

@@ -4,6 +4,7 @@
     <view class="header-card">
       <image class="header-bg" src="/static/brand/consumption-record-bg.jpg" mode="aspectFill" />
       <text class="header-title">消费记录</text>
+      <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银记录，包含退货与退款</text>
     </view>
 
     <view v-if="loading" class="empty-card">正在加载消费记录...</view>
@@ -25,8 +26,8 @@
       </view>
       <view class="detail-grid">
         <text>类型：{{ item.productType || '未填写' }}</text>
-        <text>原价：¥{{ formatMoney(item.originalPrice) }}</text>
-        <text>折扣：{{ discountText(item.discountRate) }}</text>
+        <text v-if="item.source !== 'POSPAL'">原价：¥{{ formatMoney(item.originalPrice) }}</text>
+        <text v-if="item.source !== 'POSPAL'">折扣：{{ discountText(item.discountRate) }}</text>
         <text>日期：{{ item.orderDate }}</text>
       </view>
       <view v-if="item.effectImages.length > 0" class="image-list">
@@ -49,6 +50,7 @@ import type { ConsumptionOrder } from '@member-platform/shared';
 import { listMyConsumptions, toAbsoluteImageUrl } from '@/utils/api';
 import { discountText, formatMoney } from '@/utils/member';
 import { useMemberRecords } from '@/utils/use-member-records';
+import { sessionState } from '@/store/session';
 
 const { records, loading, loaded, errorMessage, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions);
 
