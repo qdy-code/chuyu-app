@@ -1,5 +1,6 @@
 import {
   getMyProfile,
+  getMyCachedProfile,
   isSessionExpiredError,
   readableErrorMessage,
   wechatLoginWithProfile,
@@ -14,10 +15,17 @@ let memberAccessInFlight: Promise<boolean> | null = null;
 export const profileRefreshState = reactive({ loading: false, fresh: false, errorMessage: '' });
 let profileRevision = 0;
 let profileInFlight: Promise<boolean> | null = null;
+let cachedProfileInFlight: Promise<boolean> | null = null;
+let cachedProfileRequestId = 0;
+let profileValidatedAt = 0;
+const PROFILE_CACHE_MS = 5 * 60 * 1000;
 
 watch(() => [sessionState.userId, sessionState.token], () => {
   profileRevision += 1;
   profileInFlight = null;
+  cachedProfileInFlight = null;
+  cachedProfileRequestId += 1;
+  profileValidatedAt = 0;
   profileRefreshState.loading = false;
   profileRefreshState.fresh = false;
   profileRefreshState.errorMessage = '';
@@ -46,11 +54,12 @@ export async function refreshSessionProfile(): Promise<boolean> {
   profileRefreshState.loading = true;
   profileRefreshState.fresh = false;
   profileRefreshState.errorMessage = '';
-  const task = (async () => {
+  const task: Promise<boolean> = (async () => {
     try {
       const profile = await getMyProfile();
       if (revision !== profileRevision) return false;
       setProfile(profile);
+      profileValidatedAt = Date.now();
       profileRefreshState.fresh = true;
       return true;
     } catch (error) {
@@ -72,8 +81,43 @@ export async function refreshSessionProfile(): Promise<boolean> {
   return task;
 }
 
+// 页面浏览与身份检查只读取已保存的资料，不触发银豹付费查询。
+export async function loadSessionProfile(force = false): Promise<boolean> {
+  restoreSession();
+  if (!sessionState.token || !sessionState.userId) return false;
+  if (profileInFlight) return profileInFlight;
+  if (cachedProfileInFlight) return cachedProfileInFlight;
+  profileRefreshState.fresh = false;
+  if (force !== true && sessionState.profile && sessionState.profile.pospal?.state !== 'UNLINKED' &&
+    profileValidatedAt && Date.now() - profileValidatedAt < PROFILE_CACHE_MS) return true;
+  const revision = ++profileRevision;
+  const requestId = ++cachedProfileRequestId;
+  const task: Promise<boolean> = (async () => {
+    try {
+      const profile = await getMyCachedProfile();
+      if (revision !== profileRevision) return false;
+      setProfile(profile);
+      profileValidatedAt = Date.now();
+      profileRefreshState.errorMessage = '';
+      return true;
+    } catch (error) {
+      if (revision !== profileRevision) return false;
+      if (isSessionExpiredError(error)) {
+        clearSession();
+        return false;
+      }
+      profileRefreshState.errorMessage = readableErrorMessage(error, '请稍后重试');
+      return Boolean(sessionState.profile);
+    } finally {
+      if (requestId === cachedProfileRequestId) cachedProfileInFlight = null;
+    }
+  })();
+  cachedProfileInFlight = task;
+  return task;
+}
+
 export async function ensureSession(): Promise<boolean> {
-  const restored = await refreshSessionProfile();
+  const restored = await loadSessionProfile();
   if (restored) return true;
   await loginWithWechat();
   if (!sessionState.userId) {
@@ -140,7 +184,7 @@ export function requireRegistered(): boolean {
 }
 
 async function resolveReadyMemberAccess(onSetupRequired?: () => void): Promise<boolean> {
-  if (await refreshSessionProfile()) {
+  if (await loadSessionProfile()) {
     if (!sessionState.profile?.phone) {
       await promptPhoneSetup(onSetupRequired);
       return false;

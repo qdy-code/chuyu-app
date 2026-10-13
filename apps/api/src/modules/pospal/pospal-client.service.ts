@@ -4,6 +4,7 @@ import type { ConsumptionOrder, RechargeOrder, PospalConfiguration, PospalConnec
 
 const BASE_URL = 'https://platform.pospal.cn';
 const CONFIG_KEYS = ['POSPAL_APP_ID', 'POSPAL_APP_KEY', 'POSPAL_ACCOUNT'] as const;
+type PospalPage = { list: Record<string, unknown>[]; hasMore: boolean; requestId: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -35,6 +36,7 @@ function businessDate(value: unknown): string {
 
 @Injectable()
 export class PospalClientService {
+  private readonly activeQueries = new Map<string, Promise<PospalPage>>();
   getConfiguration(): PospalConfiguration {
     const missingEnv = CONFIG_KEYS.filter((key) => !process.env[key]?.trim());
     return {
@@ -140,9 +142,25 @@ export class PospalClientService {
     };
   }
 
-  private async queryPage(path: string, filters: Record<string, unknown>): Promise<{
-    list: Record<string, unknown>[]; hasMore: boolean; requestId: string;
-  }> {
+  private async queryPage(path: string, filters: Record<string, unknown>): Promise<PospalPage> {
+    const configuration = this.getConfiguration();
+    if (!configuration.enabled || !configuration.configured) {
+      throw new ServiceUnavailableException('银豹连接未启用或服务端凭证未配置');
+    }
+    const key = JSON.stringify([process.env.POSPAL_APP_ID?.trim(), this.getAccount(), path, filters]);
+    let task = this.activeQueries.get(key);
+    if (!task) {
+      task = this.executeQueryPage(path, filters);
+      this.activeQueries.set(key, task);
+    }
+    try {
+      return await task;
+    } finally {
+      if (this.activeQueries.get(key) === task) this.activeQueries.delete(key);
+    }
+  }
+
+  private async executeQueryPage(path: string, filters: Record<string, unknown>): Promise<PospalPage> {
     const configuration = this.getConfiguration();
     if (!configuration.enabled || !configuration.configured) {
       throw new ServiceUnavailableException('银豹连接未启用或服务端凭证未配置');

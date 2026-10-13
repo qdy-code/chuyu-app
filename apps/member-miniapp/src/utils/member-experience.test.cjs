@@ -34,6 +34,7 @@ function setup(t, overrides = {}, initialProfile = null) {
   };
   const api = {
     getMyProfile: async () => serverProfile,
+    getMyCachedProfile: async () => serverProfile,
     isSessionExpiredError: (error) => error.message === 'expired',
     readableErrorMessage: (error, fallback) => error?.message || fallback,
     wechatLoginWithProfile: async () => {
@@ -645,4 +646,90 @@ test('native preview marks the return only after images resolve, and failure can
   assert.equal(ctx.emissions.at(-1).event, 'preview-start');
   ctx.notices.at(-1).fail({ errMsg: 'preview:fail' });
   assert.equal(ctx.emissions.at(-1).event, 'preview-failed');
+});
+
+test('page browsing and booking access use one cached profile read and no paid balance query', async (t) => {
+  let cached = 0, paid = 0;
+  const ctx = setup(t, {
+    getMyCachedProfile: async () => { cached++; return linked; },
+    getMyProfile: async () => { paid++; return linked; },
+  }, linked);
+  const member = authorize(ctx);
+  await Promise.all([member.loadSessionProfile(), member.loadSessionProfile()]);
+  for (let i = 0; i < 10; i++) {
+    assert.equal(await member.ensureSession(), true);
+    assert.equal(await member.ensureReadyMemberAccess(), true);
+  }
+  ctx.load('pages/card/card.vue');
+  ctx.load('pages/index/index.vue');
+  for (const page of ['pages/card/card.vue', 'pages/index/index.vue']) {
+    for (const hook of ctx.hooks.get(page)) await hook();
+  }
+  assert.equal(cached, 1);
+  assert.equal(paid, 0);
+  assert.equal(ctx.session.profile.pospal.syncedAt, linked.pospal.syncedAt);
+  assert.equal(member.profileRefreshState.fresh, false);
+  await member.refreshSessionProfile();
+  assert.equal(paid, 1);
+  assert.equal(member.profileRefreshState.fresh, true);
+});
+
+test('profile cache expiry checks identity without buying another balance query', async (t) => {
+  let now = 1000000, cached = 0, paid = 0;
+  t.mock.method(Date, 'now', () => now);
+  const ctx = setup(t, {
+    getMyCachedProfile: async () => { cached++; return linked; },
+    getMyProfile: async () => { paid++; return linked; },
+  }, linked);
+  const member = authorize(ctx);
+  await member.loadSessionProfile();
+  now += 5 * 60 * 1000 + 1;
+  await member.loadSessionProfile();
+  assert.equal(cached, 2);
+  assert.equal(paid, 0);
+});
+
+test('an older cached response cannot overwrite an explicit POS refresh or block later profile loads', async (t) => {
+  let finish, count = 0;
+  const updated = { ...linked, balance: 120, pospal: { ...linked.pospal, syncedAt: '2026-10-12T08:00:00Z' } };
+  const ctx = setup(t, {
+    getMyCachedProfile: () => ++count === 1 ? new Promise(r => { finish = r; }) : Promise.resolve(updated),
+    getMyProfile: async () => updated,
+  }, linked);
+  const member = authorize(ctx);
+  const passive = member.loadSessionProfile();
+  await member.refreshSessionProfile();
+  finish(linked);
+  await passive;
+  assert.equal(ctx.session.profile.balance, 120);
+  assert.equal(member.profileRefreshState.fresh, true);
+  assert.equal(await member.loadSessionProfile(true), true);
+  assert.equal(count, 2);
+  assert.equal(ctx.session.profile.balance, 120);
+  assert.equal(member.profileRefreshState.fresh, false);
+});
+
+test('cached profile checks clear an expired session and ignore a previous member response', async (t) => {
+  let finish;
+  const ctx = setup(t, { getMyCachedProfile: () => new Promise(r => { finish = r; }) }, linked);
+  const member = authorize(ctx);
+  const request = member.loadSessionProfile();
+  ctx.session.userId = 'member-b'; ctx.session.token = 'token-b'; ctx.session.profile = { id: 'member-b', balance: 5 };
+  finish(linked); await request;
+  assert.equal(ctx.session.profile.balance, 5);
+  ctx.api.getMyCachedProfile = async () => { throw new Error('expired'); };
+  assert.equal(await member.loadSessionProfile(), false);
+  assert.equal(ctx.session.profile, null);
+});
+
+test('an unlinked member sees a newly confirmed store binding without waiting for the profile cache window', async (t) => {
+  let count = 0;
+  const unlinked = { ...linked, balance: 0, points: 0, pospal: { state: 'UNLINKED' } };
+  const ctx = setup(t, { getMyCachedProfile: async () => ++count === 1 ? unlinked : linked }, unlinked);
+  const member = authorize(ctx);
+  await member.loadSessionProfile(); await member.loadSessionProfile();
+  assert.equal(count, 2);
+  assert.equal(ctx.session.profile.pospal.state, 'LINKED');
+  assert.equal(ctx.session.profile.pospal.syncedAt, linked.pospal.syncedAt);
+  assert.equal(member.profileRefreshState.fresh, false);
 });

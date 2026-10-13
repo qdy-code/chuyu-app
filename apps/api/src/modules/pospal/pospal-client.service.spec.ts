@@ -121,4 +121,29 @@ describe('PospalClientService', () => {
     fetchMock.mockResolvedValueOnce(page([{ id: '1', customerUid: 'other-customer' }]));
     await expect(client.getRecharges('101', 'MI1')).rejects.toThrow();
   });
+
+  it('coalesces identical in-flight reads but consecutive explicit refreshes remain live', async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const calls = [client.checkConnection(), client.checkConnection()];
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    finish(page([{ userId: '1', company: 'store', self: true }]));
+    const results = await Promise.all(calls);
+    expect(results[0].requestId).toBe(results[1].requestId);
+    fetchMock.mockResolvedValueOnce(page([{ userId: '1', company: 'store', self: true }]));
+    await client.checkConnection();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('never merges requests for different bound members and retries only after a new caller request', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(page([])));
+    await Promise.all([client.getRecharges('101', 'member-a'), client.getRecharges('102', 'member-b')]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fetchMock.mockRejectedValueOnce(new Error('provider offline'));
+    await expect(client.getRecharges('101', 'member-a')).rejects.toBeInstanceOf(BadGatewayException);
+    fetchMock.mockResolvedValueOnce(page([]));
+    await client.getRecharges('101', 'member-a');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
 });

@@ -191,6 +191,10 @@ export async function getMyProfile(): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me');
 }
 
+export function getMyCachedProfile(): Promise<MemberProfile> {
+  return request<MemberProfile>('/members/me/cached-profile');
+}
+
 export function bindWechatPhone(code: string): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me/phone', {
     method: 'PUT',

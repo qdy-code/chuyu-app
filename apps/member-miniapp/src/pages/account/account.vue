@@ -134,7 +134,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import { readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
 import { resolveImageForDisplay } from '@/utils/image-cache';
-import { refreshSessionProfile } from '@/utils/member';
+import { loadSessionProfile } from '@/utils/member';
 
 const nickname = ref('');
 const setupMode = ref(false);
@@ -159,7 +159,7 @@ const icpRecord = rawIcpRecord && !/X{4,}|请填写|示例/i.test(rawIcpRecord) 
 const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
 
 async function refresh() {
-  await refreshSessionProfile();
+  await loadSessionProfile();
   const currentNickname = sessionState.profile?.nickname || '';
   nickname.value = setupMode.value && currentNickname === '微信用户' ? '' : currentNickname;
   birthday.value = toBirthdayMonthDay(sessionState.profile?.birthday);

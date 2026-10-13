@@ -191,7 +191,7 @@ import {
   toAbsoluteImageUrl,
 } from '@/utils/api';
 import { sessionState } from '@/store/session';
-import { ensureReadyMemberAccess, refreshSessionProfile } from '@/utils/member';
+import { ensureReadyMemberAccess, loadSessionProfile } from '@/utils/member';
 
 type CalendarDay = {
   key: string;
@@ -510,7 +510,7 @@ async function refreshPage() {
   today.value = storeDateKey();
   pageError.value = '';
   try {
-    await refreshSessionProfile();
+    await loadSessionProfile();
     const intent = takePendingBooking('NAIL');
     if (intent) {
       selectedProduct.value = intent.product;

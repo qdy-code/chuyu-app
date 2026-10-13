@@ -5,6 +5,8 @@
       <text class="header-title">充值记录</text>
       <text class="header-desc">余额与积分分别记录</text>
       <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银系统充值记录</text>
+      <text v-if="loadedAt" class="record-meta">记录读取时间：{{ formatDate(loadedAt) }}，到店充值后可手动刷新</text>
+      <button class="refresh-records" :disabled="loading" @click="refreshMoney">{{ loading ? '加载中...' : '刷新充值记录' }}</button>
     </view>
 
     <view class="card">
@@ -54,10 +56,10 @@ import { onShow } from '@dcloudio/uni-app';
 import { listMyRecharges, listMyPointsLedger } from '@/utils/api';
 import { formatMoney, statusClass } from '@/utils/member';
 import { rechargeStatusText } from '@/utils/member-display';
-import { useMemberRecords } from '@/utils/use-member-records';
+import { MEMBER_RECORD_CACHE_MS, useMemberRecords } from '@/utils/use-member-records';
 import { sessionState } from '@/store/session';
 
-const { records, loading, loaded, errorMessage, refresh: refreshMoney } = useMemberRecords(listMyRecharges);
+const { records, loading, loaded, loadedAt, errorMessage, load: loadMoney, refresh: refreshMoney } = useMemberRecords(listMyRecharges, { cacheMs: MEMBER_RECORD_CACHE_MS });
 const { records: pointsRecords, loading: pointsLoading, loaded: pointsLoaded,
   errorMessage: pointsError, refresh: refreshPoints } = useMemberRecords(listMyPointsLedger);
 
@@ -68,7 +70,7 @@ function formatDate(value: string): string {
 }
 
 onShow(async () => {
-  await refreshMoney();
+  await loadMoney();
   if (!sessionState.profile?.pospal) await refreshPoints();
 });
 </script>
@@ -104,6 +106,9 @@ onShow(async () => {
   background: #fff;
   box-shadow: 0 12rpx 38rpx rgba(31, 41, 55, 0.06);
 }
+
+.refresh-records { margin: 18rpx 0 0; border-radius: 999rpx; background: #fff; color: #3d4652; font-size: 25rpx; }
+.refresh-records::after { border: 0; }
 
 .header-card {
   background: #edf2f4;

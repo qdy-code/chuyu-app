@@ -5,6 +5,8 @@
       <image class="header-bg" src="/static/brand/consumption-record-bg.jpg" mode="aspectFill" />
       <text class="header-title">消费记录</text>
       <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银记录，包含退货与退款</text>
+      <text v-if="loadedAt" class="record-meta">记录读取时间：{{ formatRecordTime(loadedAt) }}，到店消费后可手动刷新</text>
+      <button class="refresh-records" :disabled="loading" @click="refresh">{{ loading ? '加载中...' : '刷新消费记录' }}</button>
     </view>
 
     <view v-if="loading" class="empty-card">正在加载消费记录...</view>
@@ -52,10 +54,14 @@ import { onShow } from '@dcloudio/uni-app';
 import type { ConsumptionOrder } from '@member-platform/shared';
 import { listMyConsumptions, toAbsoluteImageUrl } from '@/utils/api';
 import { discountText, formatMoney } from '@/utils/member';
-import { useMemberRecords } from '@/utils/use-member-records';
+import { MEMBER_RECORD_CACHE_MS, useMemberRecords } from '@/utils/use-member-records';
 import { sessionState } from '@/store/session';
 
-const { records, loading, loaded, errorMessage, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions);
+const { records, loading, loaded, loadedAt, errorMessage, load, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions, { cacheMs: MEMBER_RECORD_CACHE_MS });
+
+function formatRecordTime(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
 
 function isRefund(item: ConsumptionOrder): boolean {
   return item.finalPrice < 0 || (item.source === 'POSPAL' && item.productType === '退货 / 退款');
@@ -68,7 +74,7 @@ function previewImages(images: string[], current: string) {
   });
 }
 
-onShow(refresh);
+onShow(load);
 </script>
 
 <style scoped>
@@ -123,6 +129,9 @@ onShow(refresh);
   position: relative;
   z-index: 1;
 }
+
+.refresh-records { position: relative; margin: 18rpx 0 0; border-radius: 999rpx; background: #fff; color: #3d4652; font-size: 25rpx; }
+.refresh-records::after { border: 0; }
 
 .header-title,
 .empty-title {

@@ -42,13 +42,13 @@ import { onShow } from '@dcloudio/uni-app';
 import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
 import { memberNumber } from '@/utils/member-display';
 import { sessionState } from '@/store/session';
-import { discountText, formatMoney, refreshSessionProfile } from '@/utils/member';
+import { discountText, formatMoney, loadSessionProfile } from '@/utils/member';
 
 function goHome() {
   uni.switchTab({ url: '/pages/index/index' });
 }
 
-onShow(refreshSessionProfile);
+onShow(() => loadSessionProfile());
 </script>
 
 <style scoped>

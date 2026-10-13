@@ -50,6 +50,12 @@ export class MembersController {
     return this.pospal.accountProfile(userId);
   }
 
+  @Get('me/cached-profile')
+  async getCachedMe(@Headers('x-user-id') userId?: string): Promise<MemberProfile> {
+    if (!userId) throw new NotFoundException('member not found');
+    return this.pospal.cachedAccountProfile(userId);
+  }
+
   @Patch('me')
   async updateMe(
     @Headers('x-user-id') userId: string | undefined,

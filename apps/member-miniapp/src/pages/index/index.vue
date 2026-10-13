@@ -167,7 +167,7 @@ import {
   ensureSession,
   formatMoney,
   hasLegalConsent,
-  refreshSessionProfile,
+  loadSessionProfile,
   requireReadyMember,
   setLegalConsent,
   loginWithWechat,
@@ -297,7 +297,7 @@ async function submitPhone() {
   savingPhone.value = true;
   try {
     setProfile(await updateMyProfile({ phone }));
-    await refreshSessionProfile();
+    await loadSessionProfile();
     uni.showToast({ title: '已完成', icon: 'success' });
     completeEntry();
   } catch (error) {
@@ -374,7 +374,7 @@ function openTerms() {
 onShow(async () => {
   legalAccepted.value = hasLegalConsent();
   if (linkCode.value && legalAccepted.value) await refreshLinkedMember();
-  else await refreshSessionProfile();
+  else await loadSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
   if (resumePendingBooking()) return;
   void loadNextAppointment();

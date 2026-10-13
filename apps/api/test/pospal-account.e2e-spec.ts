@@ -121,4 +121,20 @@ describe('Pospal identity and account flow (isolated PostgreSQL, mocked Pospal)'
       .send({ nickname: '改名', userId: 'other-member' }).expect(400);
     expect((await prisma.member.findUniqueOrThrow({ where: { id: memberId } })).nickname).toBe(nickname);
   });
+
+  it('reuses the dated POS projection for navigation without any provider calls or timestamp changes', async () => {
+    const link = await prisma.pospalMemberLink.findUniqueOrThrow({ where: { memberId } });
+    const calls = client.getMemberByUid.mock.calls.length;
+    for (let i = 0; i < 5; i++) {
+      const response = await request(app.getHttpServer()).get('/members/me/cached-profile')
+        .set('Authorization', `Bearer ${token}`).set('x-user-id', 'other-member').expect(200);
+      expect(response.body.id).toBe(memberId);
+      expect(response.body.balance).toBe(55);
+      expect(response.body.points).toBe(45);
+      expect(response.body.pospal.syncedAt).toBe(link.lastSyncedAt?.toISOString());
+    }
+    expect(client.getMemberByUid.mock.calls.length).toBe(calls);
+    expect((await prisma.pospalMemberLink.findUniqueOrThrow({ where: { memberId } })).lastSyncedAt).toEqual(link.lastSyncedAt);
+    await request(app.getHttpServer()).get('/members/me/cached-profile').expect(401);
+  });
 });

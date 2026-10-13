@@ -17,7 +17,7 @@ const message = computed(() => {
   if (sessionState.profile?.pospal?.state === 'UNLINKED') return '请到店由工作人员核验并关联会员账户，关联后可查看余额与积分。';
   if (profileRefreshState.loading) return '正在更新余额与积分，当前显示上次同步数据。';
   if (profileRefreshState.errorMessage) return `暂未更新，以下为上次同步数据。${profileRefreshState.errorMessage}`;
-  return profileRefreshState.fresh ? '余额与积分已从门店收银系统更新。' : '当前显示上次同步数据，可点击刷新获取最新余额与积分。';
+  return profileRefreshState.fresh ? '余额与积分已从门店收银系统更新。' : '当前显示上次同步数据。到店充值或消费后，可点击刷新获取最新余额与积分。';
 });
 </script>
 
