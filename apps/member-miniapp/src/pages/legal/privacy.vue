@@ -3,7 +3,7 @@
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
       <text class="header-title">隐私政策</text>
-      <text class="header-desc">最后更新日期：2026-07-12</text>
+      <text class="header-desc">最后更新日期：2026-10-12</text>
     </view>
 
     <view class="card">
@@ -17,8 +17,8 @@
       <text class="section-title">二、我们收集哪些信息</text>
       <text class="para">为完成会员登录和服务展示，本小程序仅收集以下最小必要信息：</text>
       <text class="bullet">• 微信 OpenID：用于识别你的会员身份；通过 wx.login 获取。</text>
-      <text class="bullet">• 手机号：由你首次登录时主动填写，用于识别会员、联系确认预约及维护会员资料。</text>
-      <text class="bullet">• 昵称与头像：由你在账户资料页主动填写或选择，用于小程序和后台会员资料展示。</text>
+      <text class="bullet">• 手机号：由你主动点击微信手机号授权并确认后获取，或由你选择手动填写，用于门店会员身份核对、联系确认预约及维护会员资料。微信验证的手机号及会员昵称会发送至门店使用的银豹收银系统，用于创建或维护门店会员；已有同手机号会员由门店核实后关联。拒绝微信手机号授权后仍可手动填写。</text>
+      <text class="bullet">• 昵称与头像：由你在完善资料或账户资料页主动填写或选择，保存到门店会员后台，用于小程序和后台会员资料展示；可选择稍后完善。</text>
       <text class="bullet">• 生日月日：由你自愿填写，用于会员关怀；不要求填写出生年份。</text>
       <text class="bullet">• 预约及服务信息：包括业务类型、所选产品、预约日期时间和备注，用于门店排期与履约。</text>
       <text class="bullet">• 会员业务记录：包括会员号、等级、余额、积分、充值记录和消费记录，用于向你展示门店会员权益。</text>
@@ -35,6 +35,7 @@
       <text class="section-title">四、信息如何保存</text>
       <text class="bullet">• 数据加密传输（HTTPS / TLS 1.2+）。</text>
       <text class="bullet">• 数据存储在境内服务器，仅经授权的门店运营人员和必要的技术维护人员可访问。</text>
+      <text class="bullet">• 收藏保存在当前设备的小程序缓存中，按会员账户区分，不同步到服务器；可逐条取消收藏，清除小程序缓存后收藏也会清除。</text>
       <text class="bullet">• 我们不会留存你的微信会话密钥（session_key），登录后即丢弃。</text>
       <text class="bullet">• 信息保存期限以提供会员服务所需的最短期限为限；法律法规另有要求的除外。</text>
     </view>

@@ -49,9 +49,20 @@
 
     <view v-else-if="needsPhoneSetup" class="entry-card">
       <text class="entry-kicker">首次使用</text>
-      <text class="entry-title">填写手机号</text>
-      <text class="entry-desc">只需要填写手机号，方便门店确认预约和会员资料。</text>
-      <view class="phone-field">
+      <text class="entry-title">授权手机号</text>
+      <text class="entry-desc">通过微信授权自动填写手机号，用于门店会员核对和预约联系。</text>
+      <button
+        class="primary-btn"
+        open-type="getPhoneNumber|agreePrivacyAuthorization"
+        :disabled="savingPhone || linkBusy"
+        @getphonenumber="handleWechatPhone"
+      >
+        {{ savingPhone ? '保存中...' : '微信授权手机号' }}
+      </button>
+      <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="showManualPhone = !showManualPhone">
+        {{ showManualPhone ? '收起手动填写' : '手动填写手机号' }}
+      </button>
+      <view v-if="showManualPhone" class="phone-field">
         <text class="field-label">手机号</text>
         <input
           v-model="phoneInput"
@@ -61,7 +72,7 @@
           placeholder="请输入 11 位手机号"
         />
       </view>
-      <button class="primary-btn" :disabled="savingPhone" @click="submitPhone">
+      <button v-if="showManualPhone" class="primary-btn" :disabled="savingPhone || linkBusy" @click="submitPhone">
         {{ savingPhone ? '保存中...' : '完成并进入' }}
       </button>
       <view v-if="linkCode" class="member-link">
@@ -79,7 +90,7 @@
         <view class="member-main">
           <text class="card-label">我的会员卡</text>
           <text class="card-title">{{ sessionState.profile?.levelName || '会员' }}</text>
-          <text class="card-desc">会员号：{{ sessionState.profile?.id }}</text>
+          <text class="card-desc">会员号：{{ memberNumber(sessionState.profile) }}</text>
         </view>
         <view class="discount-badge">
           <text class="discount-value">{{ discountText(sessionState.profile?.discountRate) }}</text>
@@ -87,50 +98,76 @@
         </view>
       </view>
 
+      <AccountSyncStatus />
       <view class="stats-card">
-        <view class="stat">
-          <text class="stat-value">¥{{ formatMoney(sessionState.profile?.balance) }}</text>
+        <view class="stat" @click="openPage('/pages/card/card')">
+          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile?.balance)}` }}</text>
           <text class="stat-label">余额</text>
         </view>
         <view class="divider" />
-        <view class="stat">
-          <text class="stat-value">{{ sessionState.profile?.points || 0 }}</text>
+        <view class="stat" @click="openPage('/pages/card/card')">
+          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile?.points || 0 }}</text>
           <text class="stat-label">积分</text>
         </view>
-        <view class="divider" />
-        <view class="stat">
-          <text class="stat-value">{{ sessionState.profile?.phone || '-' }}</text>
-          <text class="stat-label">手机号</text>
+      </view>
+
+      <view class="section next-appointment">
+        <text class="section-title">下一次预约</text>
+        <text v-if="nextAppointmentLoading" class="entry-desc">正在查询预约...</text>
+        <view v-else-if="nextAppointmentError">
+          <text class="entry-desc">预约暂未更新，请重试。</text>
+          <button class="service-item" @click="loadNextAppointment">重新查询预约</button>
+        </view>
+        <view v-else-if="nextAppointment" @click="openPage('/pages/appointment/appointment')">
+          <text class="next-date">{{ nextAppointment.appointmentDate }} {{ nextAppointment.startTime }}</text>
+          <text class="next-title">{{ nextAppointment.productName || appointmentBusinessText(nextAppointment.businessType) }}</text>
+          <text class="next-status">{{ nextAppointment.status === 'PENDING' ? '待门店确认，请确认后再到店' : '预约已确认，按约到店' }}</text>
+          <button class="service-item" @click.stop="openPage('/pages/appointment/appointment')">查看预约详情</button>
+        </view>
+        <view v-else>
+          <text class="entry-desc">暂无待确认或已确认的到店安排。</text>
+          <button class="service-item" @click="openPage('/pages/appointment/appointment')">预约到店</button>
         </view>
       </view>
+
+      <StoreContact />
 
       <view class="section">
         <text class="section-title">我的服务</text>
         <view class="service-grid">
           <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>
+          <button class="service-item" @click="openPage('/pages/styles/styles')">收藏与款式</button>
           <button class="service-item" @click="openPage('/pages/consumptions/consumptions')">消费记录</button>
           <button class="service-item" @click="openPage('/pages/recharge/recharge')">充值记录</button>
           <button class="service-item" @click="openPage('/pages/account/account')">账户资料</button>
           <button class="service-item" @click="openPage('/pages/messages/messages')">留言给门店</button>
         </view>
       </view>
+      <view v-if="needsProfileSetup" class="profile-tip" @click="openProfileSetup">
+        <text>头像和昵称可稍后完善</text><text>去完善 ›</text>
+      </view>
     </template>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import StoreContact from '@/components/StoreContact.vue';
+import { nextMemberAppointment } from '@/utils/appointment-availability';
+import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
+import { memberNumber } from '@/utils/member-display';
+import { resumePendingBooking } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
-import { sessionState } from '@/store/session';
-import { createMemberLinkCode, readableErrorMessage, updateMyProfile } from '@/utils/api';
-import type { MemberLinkCode } from '@member-platform/shared';
+import { sessionState, setProfile } from '@/store/session';
+import { bindWechatPhone, createMemberLinkCode, listMyAppointments, readableErrorMessage, updateMyProfile } from '@/utils/api';
+import type { Appointment, BusinessType, MemberLinkCode } from '@member-platform/shared';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
   discountText,
   ensureSession,
   formatMoney,
   hasLegalConsent,
-  refreshSessionProfile,
+  loadSessionProfile,
   requireReadyMember,
   setLegalConsent,
   loginWithWechat,
@@ -142,11 +179,48 @@ const linkBusy = ref(false);
 const linkCode = ref<MemberLinkCode | null>(null);
 const linkExpiresText = computed(() => linkCode.value ? new Date(linkCode.value.expiresAt).toTimeString().slice(0, 5) : '');
 const phoneInput = ref('');
+const showManualPhone = ref(false);
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
 const legalAccepted = ref(hasLegalConsent());
+const nextAppointment = ref<Appointment | null>(null);
+const nextAppointmentLoading = ref(false);
+const nextAppointmentError = ref('');
+let appointmentRevision = 0;
+watch(() => [sessionState.userId, sessionState.token], () => {
+  appointmentRevision++;
+  nextAppointment.value = null;
+  nextAppointmentLoading.value = false;
+  nextAppointmentError.value = '';
+}, { flush: 'sync' });
+
+function appointmentBusinessText(type: BusinessType): string {
+  return { NAIL: '美甲预约', ACCESSORY: '饰品预留', FLOWER: '取花预约' }[type];
+}
+
+async function loadNextAppointment() {
+  const request = ++appointmentRevision;
+  nextAppointment.value = null;
+  nextAppointmentError.value = '';
+  if (!sessionState.userId || !sessionState.token || !hasLegalConsent()) return;
+  nextAppointmentLoading.value = true;
+  try {
+    const records = await listMyAppointments();
+    if (request === appointmentRevision) nextAppointment.value = nextMemberAppointment(records);
+  } catch (error) {
+    if (request === appointmentRevision) nextAppointmentError.value = readableErrorMessage(error, '预约加载失败');
+  } finally {
+    if (request === appointmentRevision) nextAppointmentLoading.value = false;
+  }
+}
 
 const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
+const needsProfileSetup = computed(() => Boolean(sessionState.profile &&
+  (!sessionState.profile.avatarUrl || sessionState.profile.nickname === '微信用户')));
+
+function openProfileSetup() {
+  uni.navigateTo({ url: '/pages/account/account?setup=1' });
+}
 
 async function handleEnter() {
   if (loggingIn.value) return;
@@ -158,6 +232,8 @@ async function handleEnter() {
   try {
     await ensureSession();
     phoneInput.value = sessionState.profile?.phone || '';
+    void loadNextAppointment();
+    resumePendingBooking();
   } catch (error) {
     console.error('[member login failed]', error);
     uni.showToast({ title: readableErrorMessage(error, '登录未完成').slice(0, 18), icon: 'none' });
@@ -174,6 +250,41 @@ function handleLegalConsentChange(event: { detail: { value: string[] } }) {
 function acceptLegalTerms() {
   legalAccepted.value = true;
   setLegalConsent(true);
+  void loadNextAppointment();
+  resumePendingBooking();
+}
+
+function completeEntry() {
+  if (resumePendingBooking()) return;
+  if (needsProfileSetup.value) openProfileSetup();
+}
+
+async function handleWechatPhone(event: { detail: { code?: string; errMsg?: string; errno?: number } }) {
+  if (savingPhone.value || linkBusy.value) return;
+  const { code, errMsg = '', errno } = event.detail;
+  if (!code) {
+    showManualPhone.value = true;
+    const content = /deny|cancel/i.test(errMsg)
+      ? '你暂未授权手机号，可以手动填写，或稍后再次授权。'
+      : errno === 1400001
+        ? '微信手机号授权暂不可用，可以手动填写或联系门店。'
+        : '手机号授权未完成，可以重新授权或手动填写。';
+    uni.showModal({ title: '手机号授权', content, showCancel: false });
+    return;
+  }
+  savingPhone.value = true;
+  try {
+    const profile = await bindWechatPhone(code);
+    setProfile(profile);
+    phoneInput.value = profile.phone || '';
+    uni.showToast({ title: '手机号已保存', icon: 'success' });
+    completeEntry();
+  } catch (error) {
+    showManualPhone.value = true;
+    uni.showModal({ title: '手机号未保存', content: readableErrorMessage(error, '授权失败，请重新授权或手动填写'), showCancel: false });
+  } finally {
+    savingPhone.value = false;
+  }
 }
 
 async function submitPhone() {
@@ -185,9 +296,10 @@ async function submitPhone() {
   }
   savingPhone.value = true;
   try {
-    await updateMyProfile({ phone });
-    await refreshSessionProfile();
+    setProfile(await updateMyProfile({ phone }));
+    await loadSessionProfile();
     uni.showToast({ title: '已完成', icon: 'success' });
+    completeEntry();
   } catch (error) {
     const message = readableErrorMessage(error, '保存失败');
     if (message.includes('手机号已被其他会员使用')) {
@@ -226,6 +338,7 @@ async function refreshLinkedMember() {
     if (sessionState.profile?.phone) {
       linkCode.value = null;
       uni.showToast({ title: '已关联会员', icon: 'success' });
+      resumePendingBooking();
     } else {
       uni.showToast({ title: '等待门店确认', icon: 'none' });
     }
@@ -261,8 +374,10 @@ function openTerms() {
 onShow(async () => {
   legalAccepted.value = hasLegalConsent();
   if (linkCode.value && legalAccepted.value) await refreshLinkedMember();
-  else await refreshSessionProfile();
+  else await loadSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
+  if (resumePendingBooking()) return;
+  void loadNextAppointment();
   headerAvatarSrc.value = await resolveImageForDisplay(
     sessionState.profile?.avatarUrl,
     '/static/brand/logo-avatar-v2.png',
@@ -459,7 +574,7 @@ onShow(async () => {
 .member-card {
   overflow: hidden;
   margin-top: 32rpx;
-  min-height: 300rpx;
+  min-height: 220rpx;
   border-radius: 36rpx;
   padding: 38rpx;
   display: flex;
@@ -573,4 +688,9 @@ onShow(async () => {
   font-size: 27rpx;
   font-weight: 900;
 }
+.next-date, .next-title, .next-status { display: block; margin-top: 14rpx; }
+.next-date { color: #273247; font-size: 34rpx; font-weight: 800; }
+.next-title { color: #3d4652; font-size: 28rpx; }
+.next-status { margin-bottom: 20rpx; color: #72818d; font-size: 24rpx; line-height: 1.5; }
+.profile-tip { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20rpx; padding: 28rpx 12rpx; color: #72818d; font-size: 24rpx; }
 </style>

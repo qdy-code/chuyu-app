@@ -14,17 +14,18 @@
         <text class="level">{{ sessionState.profile.levelName }}</text>
         <view class="code-box">
           <text class="code-title">会员号</text>
-          <text class="member-id">{{ sessionState.profile.id }}</text>
+          <text class="member-id">{{ memberNumber(sessionState.profile) }}</text>
         </view>
       </view>
 
+      <AccountSyncStatus />
       <view class="stats-card">
         <view class="stat">
-          <text class="stat-value">¥{{ formatMoney(sessionState.profile.balance) }}</text>
+          <text class="stat-value">{{ sessionState.profile.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile.balance)}` }}</text>
           <text class="stat-label">账户余额</text>
         </view>
         <view class="stat">
-          <text class="stat-value">{{ sessionState.profile.points }}</text>
+          <text class="stat-value">{{ sessionState.profile.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile.points }}</text>
           <text class="stat-label">当前积分</text>
         </view>
         <view class="stat">
@@ -38,14 +39,16 @@
 
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app';
+import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
+import { memberNumber } from '@/utils/member-display';
 import { sessionState } from '@/store/session';
-import { discountText, formatMoney, refreshSessionProfile } from '@/utils/member';
+import { discountText, formatMoney, loadSessionProfile } from '@/utils/member';
 
 function goHome() {
-  uni.navigateBack({ fail: () => uni.redirectTo({ url: '/pages/index/index' }) });
+  uni.switchTab({ url: '/pages/index/index' });
 }
 
-onShow(refreshSessionProfile);
+onShow(() => loadSessionProfile());
 </script>
 
 <style scoped>

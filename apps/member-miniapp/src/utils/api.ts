@@ -88,6 +88,12 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('birthday can only be changed once')) return '生日日期只能修改一次';
   if (lower.includes('account id can only be changed once')) return '账户ID只能修改一次';
   if (lower.includes('message content is required')) return '请输入留言内容';
+  if (lower.includes('wechat phone failed')) {
+    if (lower.includes('invalid code') || lower.includes('40029') || lower.includes('40163')) {
+      return '手机号授权已失效，请重新点击微信授权';
+    }
+    return '微信手机号获取失败，请重新授权或手动填写';
+  }
   if (lower.includes('request id already used with different data')) return '留言提交编号已使用，请重新输入后提交';
   if (
     lower.includes('invalid code') ||
@@ -183,6 +189,17 @@ export async function wechatLoginWithProfile(payload: {
 
 export async function getMyProfile(): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me');
+}
+
+export function getMyCachedProfile(): Promise<MemberProfile> {
+  return request<MemberProfile>('/members/me/cached-profile');
+}
+
+export function bindWechatPhone(code: string): Promise<MemberProfile> {
+  return request<MemberProfile>('/members/me/phone', {
+    method: 'PUT',
+    body: JSON.stringify({ code }),
+  });
 }
 
 export function createMemberLinkCode(phone: string): Promise<MemberLinkCode> {

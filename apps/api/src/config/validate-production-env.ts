@@ -56,6 +56,13 @@ export function validateProductionEnv(): void {
     errors.push('UPLOAD_DIR 生产环境必须使用持久化磁盘的绝对路径');
   }
 
+  const accountSource = process.env.POSPAL_ACCOUNT_SOURCE || 'local';
+  if (!['local', 'pospal'].includes(accountSource)) errors.push('POSPAL_ACCOUNT_SOURCE 仅支持 local 或 pospal');
+  if (accountSource === 'pospal') {
+    if (process.env.POSPAL_ENABLED !== 'true') errors.push('银豹账务来源必须启用 POSPAL_ENABLED=true');
+    for (const name of ['POSPAL_APP_ID', 'POSPAL_APP_KEY', 'POSPAL_ACCOUNT']) required(name, errors);
+  }
+
   if (errors.length > 0) {
     throw new Error(`生产环境配置校验失败：\n- ${errors.join('\n- ')}`);
   }

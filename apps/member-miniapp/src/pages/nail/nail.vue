@@ -5,7 +5,7 @@
       <text class="eyebrow">MOONISLE</text>
       <text class="title">美甲作品库</text>
       <text class="desc">月光色、低饱和、清透质感，到店完成专属款式。</text>
-      <button class="primary-btn" @click="openAppointment">预约到店</button>
+      <button class="primary-btn" @click="openAppointment()">预约到店</button>
     </view>
 
     <scroll-view class="category-scroll" scroll-x>
@@ -24,37 +24,46 @@
     </scroll-view>
 
     <view v-if="loading" class="empty">正在加载作品...</view>
-    <view v-else-if="products.length === 0" class="empty">暂时没有上架作品</view>
+    <view v-else-if="catalogError" class="empty">
+      <text>{{ catalogError }}</text>
+      <button class="reserve-btn" @click="loadCatalog">重新加载</button>
+    </view>
+    <view v-else-if="products.length === 0" class="empty">
+      <text>暂时没有上架作品，可先预约到店沟通</text>
+    </view>
     <view v-else class="product-list">
       <view v-for="item in products" :key="item.id" class="product-card">
-        <image
-          class="product-image"
-          :src="imageSrc(item)"
-          mode="aspectFill"
-          @click="previewProductImage(item)"
-        />
+        <ProductGallery :images="item.images" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
         <view class="product-body">
           <view>
             <text class="product-name">{{ item.name }}</text>
             <text class="product-desc">{{ item.description || '到店沟通款式细节' }}</text>
           </view>
+          <text class="product-note">参考价、服务时长及卸甲等加项，请与门店确认。</text>
+          <view class="favorite-row"><FavoriteButton :product="item" /></view>
           <view class="product-foot">
-            <text class="price">{{ priceText(item.referencePrice) }}</text>
-            <button class="reserve-btn" @click="openAppointment">预约</button>
+            <text class="price">{{ referencePriceText(item.referencePrice) }}</text>
+            <button class="reserve-btn" @click="openAppointment(item)">预约此款</button>
           </view>
         </view>
       </view>
     </view>
+    <StoreContact />
   </view>
 </template>
 
 <script setup lang="ts">
+import ProductGallery from '@/components/ProductGallery.vue';
+import FavoriteButton from '@/components/FavoriteButton.vue';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
+import StoreContact from '@/components/StoreContact.vue';
+import { referencePriceText } from '@/utils/catalog-display';
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { CatalogProduct, ProductCategory } from '@member-platform/shared';
 import { listCatalogCategories, listCatalogProducts } from '@/utils/api';
-import { resolveImageForDisplay } from '@/utils/image-cache';
 import { ensureReadyMemberAccess } from '@/utils/member';
+import { rememberBooking, resumePendingBooking } from '@/utils/booking-flow';
 
 const fallbackCategories: ProductCategory[] = [
   { id: 'local-nail-style', businessType: 'NAIL', name: '款式设计', sortOrder: 10, createdAt: '' },
@@ -81,27 +90,32 @@ const categories = ref<ProductCategory[]>(fallbackEnabled ? fallbackCategories :
 const products = ref<CatalogProduct[]>(fallbackEnabled ? fallbackProducts : []);
 const selectedCategoryId = ref('');
 const loading = ref(false);
-const imageSources = ref<Record<string, string>>({});
+const imagePreview = createImagePreviewReturnGuard();
+const catalogError = ref('');
+let catalogRevision = 0;
 
 async function loadCatalog() {
+  const request = ++catalogRevision;
   loading.value = true;
+  catalogError.value = '';
   try {
     const [categoryList, productList] = await Promise.all([
       listCatalogCategories('NAIL'),
       listCatalogProducts('NAIL', selectedCategoryId.value || undefined),
     ]);
+    if (request !== catalogRevision) return;
     categories.value = categoryList;
     products.value = productList;
-    await cacheProductImages(productList);
   } catch (error) {
+    if (request !== catalogRevision) return;
     categories.value = fallbackEnabled ? fallbackCategories : [];
     products.value = fallbackEnabled
       ? fallbackProducts.filter((item) => !selectedCategoryId.value || item.categoryId === selectedCategoryId.value)
       : [];
-    imageSources.value = {};
+    catalogError.value = '内容加载失败，请重试';
     uni.showToast({ title: (error instanceof Error ? error.message : '加载失败').slice(0, 18), icon: 'none' });
   } finally {
-    loading.value = false;
+    if (request === catalogRevision) loading.value = false;
   }
 }
 
@@ -110,42 +124,23 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-async function openAppointment() {
-  if (!(await ensureReadyMemberAccess())) return;
-  uni.navigateTo({ url: '/pages/appointment/appointment' });
+async function openAppointment(product?: CatalogProduct) {
+  const intent = { businessType: 'NAIL' as const, product };
+  if (!(await ensureReadyMemberAccess(() => rememberBooking(intent)))) return;
+  rememberBooking(intent);
+  resumePendingBooking();
 }
 
-function imageSrc(item: CatalogProduct): string {
-  return imageSources.value[item.id] || '/static/brand/member-card-bg.jpg';
-}
 
-function previewProductImage(item: CatalogProduct) {
-  const current = imageSrc(item);
-  uni.previewImage({
-    current,
-    urls: [current],
-    fail: () => uni.showToast({ title: '图片预览失败', icon: 'none' }),
-  });
-}
 
-async function cacheProductImages(items: CatalogProduct[]) {
-  const entries = await Promise.all(
-    items.map(async (item) => [
-      item.id,
-      await resolveImageForDisplay(item.images[0], '/static/brand/member-card-bg.jpg'),
-    ] as const),
-  );
-  imageSources.value = Object.fromEntries(entries);
-}
-
-function priceText(value?: number): string {
-  return value === undefined ? '参考价到店确认' : `参考价 ¥${Number(value).toFixed(0)}`;
-}
-
-onShow(loadCatalog);
+onShow(() => {
+  if (imagePreview.consumeReturn()) return;
+  return loadCatalog();
+});
 </script>
 
 <style scoped>
+.favorite-row { display: flex; justify-content: flex-end; margin-top: 14rpx; }
 .page {
   position: relative;
   min-height: 100vh;
@@ -173,7 +168,7 @@ onShow(loadCatalog);
 .hero {
   overflow: hidden;
   border-radius: 32rpx;
-  padding: 42rpx 36rpx;
+  padding: 28rpx 30rpx;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 18rpx 54rpx rgba(31, 41, 55, 0.08);
 }
@@ -249,11 +244,6 @@ onShow(loadCatalog);
   box-shadow: 0 16rpx 48rpx rgba(31, 41, 55, 0.08);
 }
 
-.product-image {
-  width: 100%;
-  height: 360rpx;
-  display: block;
-}
 
 .product-body {
   padding: 26rpx;
@@ -267,6 +257,8 @@ onShow(loadCatalog);
 }
 
 .product-desc {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   display: block;
   margin-top: 10rpx;
   color: #667085;
@@ -306,4 +298,5 @@ onShow(loadCatalog);
   color: #667085;
   text-align: center;
 }
+.product-note { display: block; margin-top: 14rpx; color: #72818d; font-size: 23rpx; line-height: 1.6; }
 </style>

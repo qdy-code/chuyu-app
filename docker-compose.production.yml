@@ -23,6 +23,7 @@ services:
     logging: *default-logging
 
   api:
+    image: ${COMPOSE_PROJECT_NAME:-chuyu-app}-api
     build: .
     container_name: chuyu-api
     restart: unless-stopped
@@ -45,6 +46,12 @@ services:
       MINIAPP_LOGIN_MODE: real
       WECHAT_MINIAPP_APP_ID: ${WECHAT_MINIAPP_APP_ID}
       WECHAT_MINIAPP_APP_SECRET: ${WECHAT_MINIAPP_APP_SECRET}
+      POSPAL_ENABLED: ${POSPAL_ENABLED:-false}
+      POSPAL_MEMBER_SYNC_ENABLED: ${POSPAL_MEMBER_SYNC_ENABLED:-false}
+      POSPAL_ACCOUNT_SOURCE: ${POSPAL_ACCOUNT_SOURCE:-local}
+      POSPAL_APP_ID: ${POSPAL_APP_ID:-}
+      POSPAL_APP_KEY: ${POSPAL_APP_KEY:-}
+      POSPAL_ACCOUNT: ${POSPAL_ACCOUNT:-}
     volumes:
       - uploads-data:/app/apps/api/uploads
     networks:
@@ -63,6 +70,13 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    logging: *default-logging
+
+  migration:
+    image: ${COMPOSE_PROJECT_NAME:-chuyu-app}-api
+    profiles: ['tools']
+    environment:
+      DATABASE_URL: postgresql://chuyu:${DB_PASSWORD}@postgres:5432/member_platform?schema=public
     logging: *default-logging
 
   web:

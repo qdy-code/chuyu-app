@@ -47,8 +47,9 @@ import ProductCatalogsTab from './tabs/ProductCatalogsTab.vue';
 import LogsTab from './tabs/LogsTab.vue';
 import RevenueTab from './tabs/RevenueTab.vue';
 import MessagesTab from './tabs/MessagesTab.vue';
+import PospalTab from './tabs/PospalTab.vue';
 
-type TabKey = 'members' | 'levels' | 'catalogs' | 'recharges' | 'orders' | 'revenue' | 'appointments' | 'messages' | 'logs';
+type TabKey = 'members' | 'levels' | 'catalogs' | 'recharges' | 'orders' | 'revenue' | 'appointments' | 'messages' | 'logs' | 'pospal';
 
 const { logout } = useAuth();
 const {
@@ -59,6 +60,7 @@ const {
   error,
   pendingAppointmentCount,
   memberMessages,
+  pospalAccounts,
   refreshMemberMessages,
 } = useDataStore();
 const message = useMessage();
@@ -84,6 +86,7 @@ const tabComponents: Record<TabKey, Component> = {
   appointments: AppointmentsTab,
   messages: MessagesTab,
   logs: LogsTab,
+  pospal: PospalTab,
 };
 
 const tabTitles: Record<TabKey, { title: string; desc: string }> = {
@@ -96,6 +99,7 @@ const tabTitles: Record<TabKey, { title: string; desc: string }> = {
   appointments: { title: '预约排期', desc: '日历视图查看到店预约' },
   messages: { title: '会员留言', desc: '查看顾客留言并及时回复' },
   logs: { title: '审计日志', desc: '追溯所有后台操作' },
+  pospal: { title: '银豹连接', desc: '验证收银系统连接，核对会员余额和积分' },
 };
 
 const currentComponent = shallowRef<Component>(tabComponents.members);
@@ -134,7 +138,8 @@ const menuOptions = computed<MenuOption[]>(() => [
   },
   { label: '会员留言', key: 'messages', icon: renderIcon(MessageSquareText), extra: rightExtra(memberMessages.value.length) },
   { label: '审计日志', key: 'logs', icon: renderIcon(History) },
-]);
+  { label: '银豹连接', key: 'pospal', icon: renderIcon(Activity) },
+].filter((item) => !pospalAccounts.value || !['levels', 'recharges', 'orders', 'revenue'].includes(String(item.key))));
 
 const currentMeta = computed(() => tabTitles[activeKey.value]);
 

@@ -8,6 +8,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { ConsumptionsModule } from './modules/consumptions/consumptions.module';
 import { StoreModule } from './store/store.module';
 import { HealthController } from './health.controller';
+import { PospalModule } from './modules/pospal/pospal.module';
+import { PospalController } from './modules/pospal/pospal.controller';
 
 @Module({
   imports: [
@@ -18,6 +20,7 @@ import { HealthController } from './health.controller';
     AdminModule,
     AuditModule,
     ConsumptionsModule,
+    PospalModule,
   ],
   controllers: [HealthController],
 })
@@ -33,6 +36,6 @@ export class AppModule implements NestModule {
       .forRoutes('members', 'recharges', 'consumptions');
     consumer
       .apply(AdminAuthMiddleware)
-      .forRoutes('admin');
+      .forRoutes('admin', PospalController);
   }
 }

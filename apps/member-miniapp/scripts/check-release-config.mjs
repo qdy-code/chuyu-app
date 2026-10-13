@@ -12,6 +12,14 @@ const errors = [];
 const apiBase = env.VITE_API_BASE_URL || '';
 const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'src/manifest.json'), 'utf8'));
 const projectConfig = JSON.parse(readFileSync(resolve(process.cwd(), 'project.config.json'), 'utf8'));
+const releaseTarget = JSON.parse(readFileSync(resolve(process.cwd(), 'release-target.json'), 'utf8'));
+
+if (apiBase.replace(/\/$/, '') !== releaseTarget.apiBaseUrl) {
+  errors.push(`VITE_API_BASE_URL 必须与已确认的上线地址一致：${releaseTarget.apiBaseUrl}`);
+}
+if (manifest['mp-weixin']?.appid !== releaseTarget.appid || projectConfig.appid !== releaseTarget.appid) {
+  errors.push('小程序 AppID 必须与 release-target.json 一致');
+}
 
 try {
   const url = new URL(apiBase);

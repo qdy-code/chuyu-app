@@ -6,6 +6,7 @@ import { DataStoreService } from '../../store/data-store.service';
 import { WechatMiniappService } from '../wechat/wechat-miniapp.service';
 import { signToken } from '../../common/token';
 import { AdminLoginDto, WechatLoginDto } from './dto';
+import { PospalService } from '../pospal/pospal.service';
 
 const ADMIN_LOGIN_LIMIT = 5;
 const ADMIN_LOGIN_BLOCK_MS = 15 * 60 * 1000;
@@ -16,6 +17,7 @@ export class AuthController {
   constructor(
     private readonly store: DataStoreService,
     private readonly wechatMiniapp: WechatMiniappService,
+    private readonly pospal: PospalService,
   ) {}
 
   @Post('wechat/login')
@@ -27,7 +29,7 @@ export class AuthController {
     });
     return {
       token: signToken(user.id, 'member'),
-      user,
+      user: await this.pospal.cachedAccountProfile(user.id),
     };
   }
 

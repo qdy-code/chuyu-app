@@ -66,7 +66,7 @@ for attempt in $(seq 1 24); do
 done
 
 echo "=== 5/8 运行数据库迁移 ==="
-docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" run --rm --no-deps api \
+docker compose -f docker-compose.production.yml --env-file "$ENV_FILE" run --rm --no-deps migration \
   npx prisma migrate deploy
 
 echo "=== 6/8 启动应用服务 ==="

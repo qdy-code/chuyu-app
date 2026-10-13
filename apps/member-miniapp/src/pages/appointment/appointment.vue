@@ -1,6 +1,11 @@
 <template>
   <view class="page">
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
+    <BookingReceipt v-if="submittedAppointment" :appointment="submittedAppointment" />
+    <view v-if="pageError" class="card">
+      <text class="remark">{{ pageError }}</text>
+      <button class="booking-button" @click="refreshPage">重新加载</button>
+    </view>
     <view class="card calendar-card">
       <view class="section-head">
         <view>
@@ -71,6 +76,8 @@
       </view>
     </view>
 
+    <StoreContact />
+
     <view class="card record-summary-card" @click="openRecordsPanel">
       <view class="section-head compact">
         <view>
@@ -92,33 +99,14 @@
           <button class="close-btn" @click="closeBookingPanel">×</button>
         </view>
 
-        <view class="slot-head">
-          <text class="label">选择到店时间</text>
-          <text class="selected-count">{{ selectedArrivalTime }}</text>
+        <view v-if="selectedProduct" class="selected-summary">
+          <text class="label">已选款式</text>
+          <text class="summary-text">{{ selectedProduct.name }}</text>
+          <button class="clear-style" @click="selectedProduct = undefined">不选款式，直接预约</button>
         </view>
+        <text class="remark">提交的是预约申请，请等待门店确认后再到店。</text>
 
-        <view class="alarm-wheel">
-          <view class="wheel-fade top"></view>
-          <picker-view
-            class="time-wheel"
-            indicator-class="wheel-indicator"
-            :value="[selectedHourIndex, selectedMinuteIndex]"
-            @change="onTimeWheelChange"
-          >
-            <picker-view-column>
-              <view v-for="hour in hourOptions" :key="hour" class="wheel-row single">
-                <text class="wheel-time">{{ hour }}</text>
-              </view>
-            </picker-view-column>
-            <picker-view-column>
-              <view v-for="minute in minuteOptions" :key="minute" class="wheel-row single">
-                <text class="wheel-time">{{ minute }}</text>
-              </view>
-            </picker-view-column>
-          </picker-view>
-          <text class="wheel-colon">:</text>
-          <view class="wheel-fade bottom"></view>
-        </view>
+        <BookingTimePicker v-model="selectedTime" :date="form.appointmentDate" :booked-slots="bookedSlots" :loading="slotsLoading" :ready="slotsReady" :error-message="slotsError" :unavailable="isSelectedDateUnavailable" @retry="retryBookedSlots" />
 
         <view class="selected-summary" :class="{ disabled: isSelectedTimeBooked || isSelectedDateUnavailable }">
           <text class="label">到店时间</text>
@@ -133,8 +121,8 @@
           <input v-model="form.remark" class="input" placeholder="可填写到店需求" />
         </view>
 
-        <button class="submit" :disabled="submitting || isSelectedDateUnavailable || isSelectedTimeBooked || isSelectedTimePast" @click="confirmSubmitAppointment">
-          {{ submitting ? '提交中...' : '提交预约' }}
+        <button class="submit" :disabled="submitting || !slotsReady || slotsLoading || isSelectedDateUnavailable || isSelectedTimeBooked || isSelectedTimePast" @click="confirmSubmitAppointment">
+          {{ submitting ? '提交中...' : '提交预约申请' }}
         </button>
       </view>
     </view>
@@ -170,6 +158,7 @@
                 @click.stop="previewAppointmentProduct(item)"
               />
             </view>
+            <button v-if="item.status === 'COMPLETED'" class="repeat-button" :disabled="repeating" @click="repeatBooking(item)">再次预约</button>
           </view>
         </scroll-view>
       </view>
@@ -179,23 +168,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { computed, ref, watch } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import BookingReceipt from '@/components/BookingReceipt.vue';
+import BookingTimePicker from '@/components/BookingTimePicker.vue';
+import StoreContact from '@/components/StoreContact.vue';
+import { useRepeatBooking } from '@/utils/repeat-booking';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
+import { appointmentTimeConflicts, appointmentTimePast, nextFutureAppointmentTime, storeDateKey } from '@/utils/appointment-availability';
+import { useBookedSlots } from '@/utils/use-booked-slots';
+import { rememberBooking, takePendingBooking } from '@/utils/booking-flow';
+import type { BookingIntent } from '@/utils/booking-flow';
 import type {
   Appointment,
   AppointmentStatus,
   AppointmentUnavailableDate,
-  BookedAppointmentSlot,
 } from '@member-platform/shared';
 import {
   createAppointment,
   listAppointmentUnavailableDates,
-  listBookedAppointmentSlots,
   listMyAppointments,
   toAbsoluteImageUrl,
 } from '@/utils/api';
 import { sessionState } from '@/store/session';
-import { ensureReadyMemberAccess, refreshSessionProfile } from '@/utils/member';
+import { ensureReadyMemberAccess, loadSessionProfile } from '@/utils/member';
 
 type CalendarDay = {
   key: string;
@@ -207,24 +203,30 @@ type CalendarDay = {
 };
 
 const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
-const today = formatDate(new Date());
-const currentMonth = ref(today.slice(0, 7));
+const today = ref(storeDateKey());
+const currentMonth = ref(today.value.slice(0, 7));
 const submitting = ref(false);
+const selectedProduct = ref<BookingIntent['product']>();
+const submittedAppointment = ref<Appointment | null>(null);
+const pageError = ref('');
 const showBookingPanel = ref(false);
 const showRecordsPanel = ref(false);
 const appointments = ref<Appointment[]>([]);
-const bookedSlots = ref<BookedAppointmentSlot[]>([]);
+const { repeating, repeatBooking } = useRepeatBooking();
+const imagePreview = createImagePreviewReturnGuard();
+watch(() => [sessionState.userId, sessionState.token], () => {
+  submittedAppointment.value = null;
+  appointments.value = [];
+}, { flush: 'sync' });
 const unavailableDates = ref<AppointmentUnavailableDate[]>([]);
-const selectedHourIndex = ref(1);
-const selectedMinuteIndex = ref(0);
+const selectedTime = ref('10:00');
 const nowTick = ref(Date.now());
 const form = ref({
-  appointmentDate: today,
+  appointmentDate: today.value,
   remark: '',
 });
 
-const hourOptions = Array.from({ length: 13 }, (_, index) => String(index + 9).padStart(2, '0'));
-const allMinuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+const { slots: bookedSlots, loading: slotsLoading, ready: slotsReady, errorMessage: slotsError, refresh: refreshBookedSlots } = useBookedSlots('NAIL', () => form.value.appointmentDate);
 
 const calendarTitle = computed(() => {
   const [year, month] = currentMonth.value.split('-');
@@ -262,30 +264,19 @@ const calendarDays = computed<CalendarDay[]>(() => {
       date: value,
       day: date.getDate(),
       inMonth: date.getMonth() === month - 1,
-      disabled: value < today || unavailable,
+      disabled: value < today.value || unavailable,
       unavailable,
     };
   });
 });
 
-const bookedSlotStarts = computed(() => new Set(bookedSlots.value.map((slot) => slot.startTime)));
-
-const minuteOptions = computed(() => (hourOptions[selectedHourIndex.value] === '21' ? ['00'] : allMinuteOptions));
-
-const selectedArrivalTime = computed(() => {
-  const hour = hourOptions[selectedHourIndex.value] || '09';
-  const minute = minuteOptions.value[selectedMinuteIndex.value] || '00';
-  return `${hour}:${minute}`;
-});
-
-const isSelectedTimeBooked = computed(() => bookedSlotStarts.value.has(selectedArrivalTime.value));
-
-const isSelectedDatePast = computed(() => form.value.appointmentDate < today);
+const selectedArrivalTime = computed(() => selectedTime.value);
+const isSelectedTimeBooked = computed(() => appointmentTimeConflicts(selectedTime.value, bookedSlots.value));
+const isSelectedDatePast = computed(() => form.value.appointmentDate < today.value);
 const isSelectedDateUnavailable = computed(() => unavailableDateSet.value.has(form.value.appointmentDate));
-
 const isSelectedTimePast = computed(() => {
   nowTick.value;
-  return isPastAppointmentTime(form.value.appointmentDate, selectedArrivalTime.value);
+  return appointmentTimePast(form.value.appointmentDate, selectedTime.value, new Date(nowTick.value));
 });
 
 const selectedSlotSummary = computed(() => selectedArrivalTime.value);
@@ -297,11 +288,11 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function nextAvailableDate(startDate = today): string {
+function nextAvailableDate(startDate = today.value): string {
   const date = new Date(`${startDate}T00:00:00`);
   for (let offset = 0; offset < 366; offset += 1) {
     const value = formatDate(date);
-    if (value >= today && !unavailableDateSet.value.has(value)) return value;
+    if (value >= today.value && !unavailableDateSet.value.has(value)) return value;
     date.setDate(date.getDate() + 1);
   }
   return startDate;
@@ -311,7 +302,7 @@ function changeMonth(offset: number) {
   const [year, month] = currentMonth.value.split('-').map((value) => Number(value));
   const next = new Date(year, month - 1 + offset, 1);
   const nextMonth = formatDate(next).slice(0, 7);
-  if (nextMonth < today.slice(0, 7)) {
+  if (nextMonth < today.value.slice(0, 7)) {
     uni.showToast({ title: '不可选择过去月份', icon: 'none' });
     return;
   }
@@ -319,7 +310,8 @@ function changeMonth(offset: number) {
 }
 
 async function selectDate(date: string) {
-  if (date < today) {
+  if (submitting.value) return;
+  if (date < today.value) {
     uni.showToast({ title: '不可选择过去日期', icon: 'none' });
     return;
   }
@@ -330,13 +322,7 @@ async function selectDate(date: string) {
   form.value.appointmentDate = date;
   currentMonth.value = date.slice(0, 7);
   ensureFutureTimeSelection();
-  await loadBookedSlots();
-}
-
-function onTimeWheelChange(event: { detail: { value: number[] } }) {
-  selectedHourIndex.value = event.detail.value[0] || 0;
-  selectedMinuteIndex.value = Math.min(event.detail.value[1] || 0, minuteOptions.value.length - 1);
-  ensureFutureTimeSelection();
+  try { await loadBookedSlots(); } catch { pageError.value = '预约时间加载失败，请重试。'; }
 }
 
 function appointmentTimeText(item: Appointment): string {
@@ -360,58 +346,61 @@ function appointmentImageSrc(item: Appointment): string {
 function previewAppointmentProduct(item: Appointment) {
   const urls = (item.productImages || []).map((image) => toAbsoluteImageUrl(image));
   if (urls.length === 0) return;
+  imagePreview.start();
   uni.previewImage({
     current: urls[0],
     urls,
+    fail: () => { imagePreview.cancel(); uni.showToast({ title: '图片预览失败，请重试', icon: 'none' }); },
   });
 }
 
 function statusText(status: AppointmentStatus): string {
   const map: Record<AppointmentStatus, string> = {
-    PENDING: '待处理',
-    CONFIRMED: '已接受',
-    CANCELLED: '已拒绝',
-    COMPLETED: '已结束',
+    PENDING: '待门店确认',
+    CONFIRMED: '预约已确认',
+    CANCELLED: '预约未能安排',
+    COMPLETED: '服务已完成',
   };
   return map[status] || status;
 }
 
 async function loadAppointments() {
   if (!sessionState.userId) return;
-  appointments.value = await listMyAppointments();
+  const userId = sessionState.userId;
+  const token = sessionState.token;
+  const records = await listMyAppointments();
+  if (sessionState.userId === userId && sessionState.token === token) appointments.value = records;
 }
 
 async function loadBookedSlots() {
   if (!sessionState.userId) return;
-  bookedSlots.value = await listBookedAppointmentSlots(form.value.appointmentDate, 'NAIL');
-  if (selectedMinuteIndex.value >= minuteOptions.value.length) {
-    selectedMinuteIndex.value = Math.max(0, minuteOptions.value.length - 1);
-  }
-  ensureFutureTimeSelection();
+  if (!(await refreshBookedSlots())) throw new Error(slotsError.value || '预约时间加载失败');
 }
 
+function retryBookedSlots() { void refreshBookedSlots(); }
+
 async function loadUnavailableDates() {
-  try {
-    unavailableDates.value = await listAppointmentUnavailableDates('NAIL', today);
-  } catch (error) {
-    uni.showToast({ title: '预约日期加载失败', icon: 'none' });
-  }
+  unavailableDates.value = await listAppointmentUnavailableDates('NAIL', today.value);
 }
 
 async function openBookingPanel() {
-  if (!(await ensureReadyMemberAccess())) return;
-  await loadUnavailableDates();
-  if (form.value.appointmentDate < today) {
-    form.value.appointmentDate = today;
-    currentMonth.value = today.slice(0, 7);
+  if (!(await ensureReadyMemberAccess(rememberCurrentBooking))) return;
+  try {
+    await loadUnavailableDates();
+    if (form.value.appointmentDate < today.value) {
+      form.value.appointmentDate = today.value;
+      currentMonth.value = today.value.slice(0, 7);
+    }
+    if (isSelectedDateUnavailable.value) {
+      form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
+      currentMonth.value = form.value.appointmentDate.slice(0, 7);
+    }
+    ensureFutureTimeSelection();
+    await loadBookedSlots();
+    showBookingPanel.value = true;
+  } catch {
+    pageError.value = '预约时间加载失败，请重新加载后选择时间。';
   }
-  if (isSelectedDateUnavailable.value) {
-    form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
-    currentMonth.value = form.value.appointmentDate.slice(0, 7);
-  }
-  ensureFutureTimeSelection();
-  showBookingPanel.value = true;
-  await loadBookedSlots();
 }
 
 function closeBookingPanel() {
@@ -428,7 +417,12 @@ function closeRecordsPanel() {
 }
 
 async function confirmSubmitAppointment() {
-  if (!(await ensureReadyMemberAccess())) return;
+  if (submitting.value) return;
+  if (!(await ensureReadyMemberAccess(rememberCurrentBooking))) return;
+  if (!slotsReady.value || slotsLoading.value) {
+    uni.showToast({ title: '请先加载预约时段', icon: 'none' });
+    return;
+  }
   if (isSelectedDateUnavailable.value) {
     uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
     return;
@@ -445,7 +439,7 @@ async function confirmSubmitAppointment() {
 
   uni.showModal({
     title: '确认预约',
-    content: `确认预约 ${form.value.appointmentDate} ${selectedSlotSummary.value}？`,
+    content: `${selectedProduct.value ? `${selectedProduct.value.name}\n` : ''}${form.value.appointmentDate} ${selectedSlotSummary.value}\n提交预约申请后，需等待门店确认。`,
     confirmText: '确认提交',
     success: (result) => {
       if (result.confirm) {
@@ -456,6 +450,7 @@ async function confirmSubmitAppointment() {
 }
 
 async function submitAppointment() {
+  if (submitting.value) return;
   submitting.value = true;
   try {
     await loadUnavailableDates();
@@ -474,16 +469,25 @@ async function submitAppointment() {
       return;
     }
 
-    await createAppointment({
+    const userId = sessionState.userId;
+    const token = sessionState.token;
+    const created = await createAppointment({
       businessType: 'NAIL',
+      productId: selectedProduct.value?.id,
       appointmentDate: form.value.appointmentDate,
       startTime: selectedArrivalTime.value,
       remark: form.value.remark || undefined,
     });
+    if (sessionState.userId !== userId || sessionState.token !== token) return;
+    submittedAppointment.value = created;
     form.value.remark = '';
     showBookingPanel.value = false;
-    uni.showToast({ title: '预约已提交', icon: 'success' });
-    await Promise.all([loadAppointments(), loadBookedSlots()]);
+    uni.showToast({ title: '已提交，待门店确认', icon: 'none' });
+    try {
+      await Promise.all([loadAppointments(), loadBookedSlots()]);
+    } catch {
+      pageError.value = '预约申请已提交，但记录刷新失败，请重新加载查看。';
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : '预约失败';
     uni.showToast({ title: message.slice(0, 18), icon: 'none' });
@@ -492,51 +496,58 @@ async function submitAppointment() {
   }
 }
 
-onShow(async () => {
-  nowTick.value = Date.now();
-  await refreshSessionProfile();
-  await Promise.all([loadAppointments(), loadUnavailableDates()]);
-  if (isSelectedDateUnavailable.value) {
-    form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
-    currentMonth.value = form.value.appointmentDate.slice(0, 7);
-  }
-  await loadBookedSlots();
-});
-
-function isPastAppointmentTime(date: string, time: string): boolean {
-  const [year, month, day] = date.split('-').map((part) => Number(part));
-  const [hour, minute] = time.split(':').map((part) => Number(part));
-  const appointmentAt = new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
-  return appointmentAt <= nowTick.value;
+function rememberCurrentBooking() {
+  rememberBooking({
+    businessType: 'NAIL', product: selectedProduct.value,
+    date: form.value.appointmentDate, time: selectedArrivalTime.value, remark: form.value.remark,
+  });
 }
+
+onLoad((query) => { showRecordsPanel.value = query?.records === '1'; });
+
+async function refreshPage() {
+  nowTick.value = Date.now();
+  today.value = storeDateKey();
+  pageError.value = '';
+  try {
+    await loadSessionProfile();
+    const intent = takePendingBooking('NAIL');
+    if (intent) {
+      selectedProduct.value = intent.product;
+      form.value.appointmentDate = intent.date || today.value;
+      form.value.remark = intent.remark || '';
+      currentMonth.value = form.value.appointmentDate.slice(0, 7);
+      if (intent.time) selectedTime.value = intent.time;
+    }
+    await Promise.all([loadAppointments(), loadUnavailableDates()]);
+    if (isSelectedDateUnavailable.value) {
+      form.value.appointmentDate = nextAvailableDate(form.value.appointmentDate);
+      currentMonth.value = form.value.appointmentDate.slice(0, 7);
+    }
+    await loadBookedSlots();
+    if (intent) await openBookingPanel();
+  } catch {
+    pageError.value = '预约记录或时间加载失败，请重新加载。';
+  }
+}
+
+onShow(() => { if (!imagePreview.consumeReturn()) return refreshPage(); });
 
 function ensureFutureTimeSelection() {
   nowTick.value = Date.now();
-  if (form.value.appointmentDate !== today || !isSelectedTimePast.value) return;
-
-  const next = new Date(nowTick.value + 60 * 1000);
-  const minutes = next.getHours() * 60 + next.getMinutes();
-  const openingMinutes = 9 * 60;
-  const closingMinutes = 21 * 60;
-  if (minutes > closingMinutes) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    form.value.appointmentDate = nextAvailableDate(formatDate(tomorrow));
-    currentMonth.value = form.value.appointmentDate.slice(0, 7);
-    selectedHourIndex.value = 0;
-    selectedMinuteIndex.value = 0;
-    return;
-  }
-
-  const nextMinutes = Math.max(minutes, openingMinutes);
-  const hour = String(Math.floor(nextMinutes / 60)).padStart(2, '0');
-  const minute = String(nextMinutes % 60).padStart(2, '0');
-  selectedHourIndex.value = Math.max(0, hourOptions.indexOf(hour));
-  selectedMinuteIndex.value = Math.max(0, allMinuteOptions.indexOf(minute));
+  today.value = storeDateKey();
+  if (!isSelectedDatePast.value && !isSelectedTimePast.value) return;
+  const next = nextFutureAppointmentTime(new Date(nowTick.value), [...unavailableDateSet.value], form.value.appointmentDate);
+  if (!next) return;
+  form.value.appointmentDate = next.date;
+  currentMonth.value = next.date.slice(0, 7);
+  selectedTime.value = next.time;
 }
 </script>
 
 <style scoped>
+.repeat-button { margin: 20rpx 0 0; border-radius: 999rpx; background: #edf2f4; color: #3d4652; font-size: 25rpx; }
+.repeat-button::after { border: 0; }
 .page {
   position: relative;
   min-height: 100vh;
@@ -573,8 +584,7 @@ function ensureFutureTimeSelection() {
   background: linear-gradient(180deg, #fff, #f8fbfc);
 }
 
-.section-head,
-.slot-head {
+.section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -602,14 +612,6 @@ function ensureFutureTimeSelection() {
 }
 
 .pill,
-.selected-count {
-  border-radius: 999rpx;
-  padding: 10rpx 18rpx;
-  background: #edf2f4;
-  color: #3d4652;
-  font-size: 24rpx;
-  font-weight: 900;
-}
 
 .month-actions {
   display: flex;
@@ -903,73 +905,6 @@ function ensureFutureTimeSelection() {
   text-align: center;
 }
 
-.alarm-wheel {
-  position: relative;
-  height: 430rpx;
-  border-radius: 32rpx;
-  overflow: hidden;
-  background: linear-gradient(180deg, #f8fafc, #ffffff 48%, #f8fafc);
-}
-
-.time-wheel {
-  position: relative;
-  height: 430rpx;
-}
-
-.wheel-indicator {
-  height: 92rpx;
-  border-top: 1px solid rgba(17, 24, 39, 0.08);
-  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
-}
-
-.wheel-fade {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 2;
-  height: 150rpx;
-  pointer-events: none;
-}
-
-.wheel-fade.top {
-  top: 0;
-  background: linear-gradient(180deg, #f8fafc 0%, rgba(248, 250, 252, 0) 100%);
-}
-
-.wheel-fade.bottom {
-  bottom: 0;
-  background: linear-gradient(0deg, #f8fafc 0%, rgba(248, 250, 252, 0) 100%);
-}
-
-.wheel-row {
-  height: 92rpx;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #111827;
-}
-
-.wheel-time {
-  min-width: 116rpx;
-  text-align: center;
-  font-size: 46rpx;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.wheel-colon {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 3;
-  transform: translate(-50%, -50%);
-  color: #111827;
-  font-size: 48rpx;
-  font-weight: 900;
-  line-height: 1;
-}
-
 .selected-summary {
   margin-top: 20rpx;
   margin-bottom: 20rpx;
@@ -1004,4 +939,6 @@ function ensureFutureTimeSelection() {
   color: #111827;
   font-size: 30rpx;
 }
+.clear-style { margin: 14rpx 0 0; padding: 8rpx 18rpx; border-radius: 999rpx; background: #edf2f4; color: #3d4652; font-size: 23rpx; }
+.clear-style::after { border: 0; }
 </style>

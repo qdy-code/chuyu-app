@@ -4,6 +4,9 @@
     <view class="header-card">
       <text class="header-title">充值记录</text>
       <text class="header-desc">余额与积分分别记录</text>
+      <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银系统充值记录</text>
+      <text v-if="loadedAt" class="record-meta">记录读取时间：{{ formatDate(loadedAt) }}，到店充值后可手动刷新</text>
+      <button class="refresh-records" :disabled="loading" @click="refreshMoney">{{ loading ? '加载中...' : '刷新充值记录' }}</button>
     </view>
 
     <view class="card">
@@ -17,15 +20,16 @@
       <view v-for="item in records" :key="item.id" class="record">
         <view class="record-top">
           <text class="record-title">充值 ¥{{ formatMoney(item.amount) }}</text>
-          <text class="status" :class="statusClass(item.status)">{{ statusText(item.status) }}</text>
+          <text class="status" :class="statusClass(item.status)">{{ rechargeStatusText(item) }}</text>
         </view>
         <text class="record-meta">充值单号：{{ item.id }}</text>
         <text class="record-meta">时间：{{ formatDate(item.createdAt) }}</text>
+        <text v-if="item.giftAmount" class="record-meta">赠送金额：¥{{ formatMoney(item.giftAmount) }}</text>
         <text v-if="item.rejectReason" class="reject">拒绝原因：{{ item.rejectReason }}</text>
       </view>
     </view>
 
-    <view class="card">
+    <view v-if="!sessionState.profile?.pospal" class="card">
       <text class="section-title">积分明细</text>
       <view v-if="pointsLoading" class="empty-line">正在加载积分明细...</view>
       <view v-else-if="pointsError" class="empty-line">
@@ -43,16 +47,19 @@
         <text v-if="item.relatedOrderId" class="record-meta">关联单号：{{ item.relatedOrderId }}</text>
       </view>
     </view>
+    <view v-if="sessionState.profile?.pospal" class="card">当前积分从收银系统同步；积分变动明细请联系门店查询。</view>
   </view>
 </template>
 
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app';
 import { listMyRecharges, listMyPointsLedger } from '@/utils/api';
-import { formatMoney, statusClass, statusText } from '@/utils/member';
-import { useMemberRecords } from '@/utils/use-member-records';
+import { formatMoney, statusClass } from '@/utils/member';
+import { rechargeStatusText } from '@/utils/member-display';
+import { MEMBER_RECORD_CACHE_MS, useMemberRecords } from '@/utils/use-member-records';
+import { sessionState } from '@/store/session';
 
-const { records, loading, loaded, errorMessage, refresh: refreshMoney } = useMemberRecords(listMyRecharges);
+const { records, loading, loaded, loadedAt, errorMessage, load: loadMoney, refresh: refreshMoney } = useMemberRecords(listMyRecharges, { cacheMs: MEMBER_RECORD_CACHE_MS });
 const { records: pointsRecords, loading: pointsLoading, loaded: pointsLoaded,
   errorMessage: pointsError, refresh: refreshPoints } = useMemberRecords(listMyPointsLedger);
 
@@ -62,7 +69,10 @@ function formatDate(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-onShow(() => Promise.all([refreshMoney(), refreshPoints()]));
+onShow(async () => {
+  await loadMoney();
+  if (!sessionState.profile?.pospal) await refreshPoints();
+});
 </script>
 
 <style scoped>
@@ -96,6 +106,9 @@ onShow(() => Promise.all([refreshMoney(), refreshPoints()]));
   background: #fff;
   box-shadow: 0 12rpx 38rpx rgba(31, 41, 55, 0.06);
 }
+
+.refresh-records { margin: 18rpx 0 0; border-radius: 999rpx; background: #fff; color: #3d4652; font-size: 25rpx; }
+.refresh-records::after { border: 0; }
 
 .header-card {
   background: #edf2f4;

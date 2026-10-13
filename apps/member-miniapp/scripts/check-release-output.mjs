@@ -23,9 +23,13 @@ for (const file of files) {
 }
 
 const productionEnv = parseEnv(readFileSync(productionEnvPath, 'utf8'));
-const expectedApi = productionEnv.VITE_API_BASE_URL;
+const releaseTarget = JSON.parse(readFileSync(resolve(process.cwd(), 'release-target.json'), 'utf8'));
+const expectedApi = releaseTarget.apiBaseUrl;
+if (productionEnv.VITE_API_BASE_URL?.replace(/\/$/, '') !== expectedApi) {
+  errors.push('正式环境配置与 release-target.json 上线地址不一致');
+}
 if (!expectedApi || !combined.includes(expectedApi)) {
-  errors.push('产物中未找到 .env.production 配置的正式 API 地址');
+  errors.push('产物中未找到 release-target.json 配置的正式 API 地址');
 }
 for (const domain of ['moonisle.shop', 'chuy.shop']) {
   if (expectedApi && new URL(expectedApi).hostname !== domain && combined.includes(`https://${domain}/api`)) {
@@ -42,7 +46,7 @@ if (!existsSync(projectConfigPath)) {
   errors.push('产物缺少 project.config.json');
 } else {
   const projectConfig = JSON.parse(readFileSync(projectConfigPath, 'utf8'));
-  if (projectConfig.appid !== 'wx1cf2caed662f562a') errors.push('产物 AppID 不正确');
+  if (projectConfig.appid !== releaseTarget.appid) errors.push('产物 AppID 不正确');
   if (projectConfig.setting?.urlCheck !== true) errors.push('产物未开启合法域名校验');
 }
 

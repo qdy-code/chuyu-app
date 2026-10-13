@@ -1,15 +1,35 @@
 import {
   getMyProfile,
+  getMyCachedProfile,
   isSessionExpiredError,
   readableErrorMessage,
   wechatLoginWithProfile,
 } from '@/utils/api';
 import { clearSession, restoreSession, sessionState, setLoginSession, setProfile } from '@/store/session';
 import type { RechargeStatus } from '@member-platform/shared';
+import { reactive, watch } from 'vue';
 
-export const LEGAL_CONSENT_VERSION = '2026-07-12';
+export const LEGAL_CONSENT_VERSION = '2026-10-12-member-sync';
 const LEGAL_CONSENT_STORAGE_KEY = 'member-miniapp-legal-consent';
 let memberAccessInFlight: Promise<boolean> | null = null;
+export const profileRefreshState = reactive({ loading: false, fresh: false, errorMessage: '' });
+let profileRevision = 0;
+let profileInFlight: Promise<boolean> | null = null;
+let cachedProfileInFlight: Promise<boolean> | null = null;
+let cachedProfileRequestId = 0;
+let profileValidatedAt = 0;
+const PROFILE_CACHE_MS = 5 * 60 * 1000;
+
+watch(() => [sessionState.userId, sessionState.token], () => {
+  profileRevision += 1;
+  profileInFlight = null;
+  cachedProfileInFlight = null;
+  cachedProfileRequestId += 1;
+  profileValidatedAt = 0;
+  profileRefreshState.loading = false;
+  profileRefreshState.fresh = false;
+  profileRefreshState.errorMessage = '';
+}, { flush: 'sync' });
 
 export function hasLegalConsent(): boolean {
   return uni.getStorageSync(LEGAL_CONSENT_STORAGE_KEY) === LEGAL_CONSENT_VERSION;
@@ -29,21 +49,75 @@ export async function refreshSessionProfile(): Promise<boolean> {
     return false;
   }
 
-  try {
-    setProfile(await getMyProfile());
-    return true;
-  } catch (error) {
-    if (!sessionState.token || !sessionState.userId || isSessionExpiredError(error)) {
-      clearSession();
-      return false;
+  if (profileInFlight) return profileInFlight;
+  const revision = ++profileRevision;
+  profileRefreshState.loading = true;
+  profileRefreshState.fresh = false;
+  profileRefreshState.errorMessage = '';
+  const task: Promise<boolean> = (async () => {
+    try {
+      const profile = await getMyProfile();
+      if (revision !== profileRevision) return false;
+      setProfile(profile);
+      profileValidatedAt = Date.now();
+      profileRefreshState.fresh = true;
+      return true;
+    } catch (error) {
+      if (revision !== profileRevision) return false;
+      if (isSessionExpiredError(error)) {
+        clearSession();
+        return false;
+      }
+      profileRefreshState.errorMessage = readableErrorMessage(error, '请稍后重试');
+      return Boolean(sessionState.profile);
+    } finally {
+      if (revision === profileRevision) {
+        profileRefreshState.loading = false;
+        profileInFlight = null;
+      }
     }
-    console.warn('[member profile refresh failed]', error);
-    return Boolean(sessionState.profile);
-  }
+  })();
+  profileInFlight = task;
+  return task;
+}
+
+// 页面浏览与身份检查只读取已保存的资料，不触发银豹付费查询。
+export async function loadSessionProfile(force = false): Promise<boolean> {
+  restoreSession();
+  if (!sessionState.token || !sessionState.userId) return false;
+  if (profileInFlight) return profileInFlight;
+  if (cachedProfileInFlight) return cachedProfileInFlight;
+  profileRefreshState.fresh = false;
+  if (force !== true && sessionState.profile && sessionState.profile.pospal?.state !== 'UNLINKED' &&
+    profileValidatedAt && Date.now() - profileValidatedAt < PROFILE_CACHE_MS) return true;
+  const revision = ++profileRevision;
+  const requestId = ++cachedProfileRequestId;
+  const task: Promise<boolean> = (async () => {
+    try {
+      const profile = await getMyCachedProfile();
+      if (revision !== profileRevision) return false;
+      setProfile(profile);
+      profileValidatedAt = Date.now();
+      profileRefreshState.errorMessage = '';
+      return true;
+    } catch (error) {
+      if (revision !== profileRevision) return false;
+      if (isSessionExpiredError(error)) {
+        clearSession();
+        return false;
+      }
+      profileRefreshState.errorMessage = readableErrorMessage(error, '请稍后重试');
+      return Boolean(sessionState.profile);
+    } finally {
+      if (requestId === cachedProfileRequestId) cachedProfileInFlight = null;
+    }
+  })();
+  cachedProfileInFlight = task;
+  return task;
 }
 
 export async function ensureSession(): Promise<boolean> {
-  const restored = await refreshSessionProfile();
+  const restored = await loadSessionProfile();
   if (restored) return true;
   await loginWithWechat();
   if (!sessionState.userId) {
@@ -75,9 +149,9 @@ export async function loginWithWechat(): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error('登录未完成');
 }
 
-export async function ensureReadyMemberAccess(): Promise<boolean> {
+export async function ensureReadyMemberAccess(onSetupRequired?: () => void): Promise<boolean> {
   if (memberAccessInFlight) return false;
-  memberAccessInFlight = resolveReadyMemberAccess();
+  memberAccessInFlight = resolveReadyMemberAccess(onSetupRequired);
   try {
     return await memberAccessInFlight;
   } finally {
@@ -109,10 +183,15 @@ export function requireRegistered(): boolean {
   return requireReadyMember();
 }
 
-async function resolveReadyMemberAccess(): Promise<boolean> {
-  if (await refreshSessionProfile()) {
+async function resolveReadyMemberAccess(onSetupRequired?: () => void): Promise<boolean> {
+  if (await loadSessionProfile()) {
     if (!sessionState.profile?.phone) {
-      await promptPhoneSetup();
+      await promptPhoneSetup(onSetupRequired);
+      return false;
+    }
+    if (!hasLegalConsent()) {
+      onSetupRequired?.();
+      uni.switchTab({ url: '/pages/index/index' });
       return false;
     }
     return true;
@@ -131,7 +210,10 @@ async function resolveReadyMemberAccess(): Promise<boolean> {
       content: '首次登录前，请在“我的”页面阅读并同意用户协议与隐私政策。',
       confirmText: '去查看',
     });
-    if (goToConsent) uni.switchTab({ url: '/pages/index/index' });
+    if (goToConsent) {
+      onSetupRequired?.();
+      uni.switchTab({ url: '/pages/index/index' });
+    }
     return false;
   }
 
@@ -146,7 +228,7 @@ async function resolveReadyMemberAccess(): Promise<boolean> {
   uni.hideLoading();
 
   if (!sessionState.profile?.phone) {
-    await promptPhoneSetup();
+    await promptPhoneSetup(onSetupRequired);
     return false;
   }
   uni.showToast({ title: '登录成功', icon: 'success' });
@@ -163,13 +245,16 @@ function isRetriableLoginError(error: unknown): boolean {
   );
 }
 
-async function promptPhoneSetup(): Promise<void> {
+async function promptPhoneSetup(onSetupRequired?: () => void): Promise<void> {
   const confirmed = await showConfirm({
     title: '完善手机号',
-    content: '首次使用请先填写手机号，方便门店确认预约。',
+    content: '首次使用请先授权或填写手机号，方便门店确认预约。',
     confirmText: '去填写',
   });
-  if (confirmed) uni.switchTab({ url: '/pages/index/index' });
+  if (confirmed) {
+    onSetupRequired?.();
+    uni.switchTab({ url: '/pages/index/index' });
+  }
 }
 
 function showConfirm(options: { title: string; content: string; confirmText: string }): Promise<boolean> {
@@ -202,15 +287,6 @@ export function formatMoney(value: number | undefined): string {
 export function discountText(rate: number | undefined): string {
   const value = Number(rate || 1);
   return value >= 1 ? '无折扣' : `${Number((value * 10).toFixed(2))}折`;
-}
-
-export function statusText(status: RechargeStatus): string {
-  const map: Record<RechargeStatus, string> = {
-    PENDING: '审核中',
-    APPROVED: '已通过',
-    REJECTED: '已拒绝',
-  };
-  return map[status] || status;
 }
 
 export function statusClass(status: RechargeStatus): string {

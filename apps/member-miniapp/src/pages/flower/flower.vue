@@ -3,9 +3,11 @@
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="hero">
       <text class="eyebrow">FLOWER PICKUP</text>
-      <text class="title">鲜花产品库</text>
+      <text class="title">花束与鲜花</text>
       <text class="desc">浏览花束与当季鲜花，选择取花日期时间后提交预约。</text>
     </view>
+
+    <BookingReceipt v-if="submittedAppointment" :appointment="submittedAppointment" />
 
     <scroll-view class="category-scroll" scroll-x>
       <view class="category-row">
@@ -23,25 +25,30 @@
     </scroll-view>
 
     <view v-if="loading" class="empty">正在加载鲜花...</view>
-    <view v-else-if="products.length === 0" class="empty">暂时没有上架鲜花</view>
+    <view v-else-if="catalogError" class="empty">
+      <text>{{ catalogError }}</text>
+      <button class="reserve-btn" @click="loadCatalog">重新加载</button>
+    </view>
+    <view v-else-if="products.length === 0" class="empty">
+      <text>暂时没有上架鲜花，可联系门店咨询</text>
+    </view>
     <view v-else class="product-list">
       <view v-for="item in products" :key="item.id" class="product-card">
-        <image
-          class="product-image"
-          :src="imageSrc(item)"
-          mode="aspectFill"
-          @click="previewProductImage(item)"
-        />
+        <ProductGallery :images="item.images" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
         <view class="product-body">
           <text class="product-name">{{ item.name }}</text>
           <text class="product-desc">{{ item.description || '可预约到店取花' }}</text>
+          <text class="product-note">花材、包装及取花准备时间，请与门店确认。</text>
+          <view class="favorite-row"><FavoriteButton :product="item" /></view>
           <view class="product-foot">
-            <text class="price">{{ priceText(item.referencePrice) }}</text>
+            <text class="price">{{ referencePriceText(item.referencePrice) }}</text>
             <button class="reserve-btn" @click="openReserve(item)">预约取花</button>
           </view>
         </view>
       </view>
     </view>
+
+    <StoreContact />
 
     <view v-if="reserveProduct" class="modal-mask" @click="closeReserve">
       <view class="reserve-panel" @click.stop>
@@ -52,25 +59,20 @@
           </view>
           <button class="close-btn" @click="closeReserve">×</button>
         </view>
-        <picker mode="date" :start="today" :value="form.date" @change="onDateChange">
+        <picker mode="date" :disabled="submitting" :start="today" :value="form.date" @change="onDateChange">
           <view class="field">
             <text class="label">取花日期</text>
             <text class="field-value">{{ form.date }}</text>
           </view>
         </picker>
         <text v-if="isDateUnavailable(form.date)" class="unavailable-note">当日预约已满，请选择其他日期</text>
-        <picker mode="time" start="09:00" end="21:00" :value="form.time" @change="onTimeChange">
-          <view class="field">
-            <text class="label">取花时间</text>
-            <text class="field-value">{{ form.time }}</text>
-          </view>
-        </picker>
+        <BookingTimePicker v-model="form.time" :date="form.date" :booked-slots="bookedSlots" :loading="slotsLoading" :ready="slotsReady" :error-message="slotsError" :unavailable="isDateUnavailable(form.date)" @retry="retryBookedSlots" />
         <view class="field">
           <text class="label">备注</text>
           <input v-model="form.remark" class="input" placeholder="可填写颜色、包装或祝福卡需求" />
         </view>
-        <button class="submit" :disabled="submitting || isDateUnavailable(form.date)" @click="submitReserve">
-          {{ submitting ? '提交中...' : '提交预约' }}
+        <button class="submit" :disabled="submitting || !slotsReady || slotsLoading || isSelectedTimeBlocked || isDateUnavailable(form.date)" @click="submitReserve">
+          {{ submitting ? '提交中...' : '提交预约申请' }}
         </button>
       </view>
     </view>
@@ -78,18 +80,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import ProductGallery from '@/components/ProductGallery.vue';
+import FavoriteButton from '@/components/FavoriteButton.vue';
+import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
+import StoreContact from '@/components/StoreContact.vue';
+import { referencePriceText } from '@/utils/catalog-display';
+import { computed, ref, watch } from 'vue';
+import { sessionState } from '@/store/session';
+import BookingReceipt from '@/components/BookingReceipt.vue';
+import { rememberBooking, takePendingBooking } from '@/utils/booking-flow';
+import type { BookingIntent } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
-import type { AppointmentUnavailableDate, CatalogProduct, ProductCategory } from '@member-platform/shared';
+import type { Appointment, AppointmentUnavailableDate, CatalogProduct, ProductCategory } from '@member-platform/shared';
 import {
   createAppointment,
   listAppointmentUnavailableDates,
   listCatalogCategories,
   listCatalogProducts,
 } from '@/utils/api';
-import { resolveImageForDisplay } from '@/utils/image-cache';
 import { ensureReadyMemberAccess } from '@/utils/member';
-import { localDateKey as formatDate, nextAppointmentTime } from '@/utils/appointment-time';
+import { storeDateKey as formatDate, nextFutureAppointmentTime as nextAppointmentTime, appointmentTimeConflicts, appointmentTimePast } from '@/utils/appointment-availability';
+import { useBookedSlots } from '@/utils/use-booked-slots';
+import BookingTimePicker from '@/components/BookingTimePicker.vue';
 
 const today = ref(formatDate(new Date()));
 const fallbackCategories: ProductCategory[] = [
@@ -118,30 +130,42 @@ const products = ref<CatalogProduct[]>(fallbackEnabled ? fallbackProducts : []);
 const selectedCategoryId = ref('');
 const loading = ref(false);
 const submitting = ref(false);
+const submittedAppointment = ref<Appointment | null>(null);
+watch(() => [sessionState.userId, sessionState.token], () => {
+  submittedAppointment.value = null;
+}, { flush: 'sync' });
 const reserveProduct = ref<CatalogProduct | null>(null);
 const unavailableDates = ref<AppointmentUnavailableDate[]>([]);
 const form = ref({ date: today.value, time: '10:00', remark: '' });
-const imageSources = ref<Record<string, string>>({});
+const { slots: bookedSlots, loading: slotsLoading, ready: slotsReady, errorMessage: slotsError, refresh: refreshBookedSlots } = useBookedSlots('FLOWER', () => form.value.date);
+const isSelectedTimeBlocked = computed(() => isPast(form.value.date, form.value.time) || appointmentTimeConflicts(form.value.time, bookedSlots.value));
+function retryBookedSlots() { void refreshBookedSlots(); }
+const imagePreview = createImagePreviewReturnGuard();
+const catalogError = ref('');
+let catalogRevision = 0;
 
 async function loadCatalog() {
+  const request = ++catalogRevision;
   loading.value = true;
+  catalogError.value = '';
   try {
     const [categoryList, productList] = await Promise.all([
       listCatalogCategories('FLOWER'),
       listCatalogProducts('FLOWER', selectedCategoryId.value || undefined),
     ]);
+    if (request !== catalogRevision) return;
     categories.value = categoryList;
     products.value = productList;
-    await cacheProductImages(productList);
   } catch (error) {
+    if (request !== catalogRevision) return;
     categories.value = fallbackEnabled ? fallbackCategories : [];
     products.value = fallbackEnabled
       ? fallbackProducts.filter((item) => !selectedCategoryId.value || item.categoryId === selectedCategoryId.value)
       : [];
-    imageSources.value = {};
+    catalogError.value = '内容加载失败，请重试';
     uni.showToast({ title: (error instanceof Error ? error.message : '加载失败').slice(0, 18), icon: 'none' });
   } finally {
-    loading.value = false;
+    if (request === catalogRevision) loading.value = false;
   }
 }
 
@@ -150,8 +174,8 @@ function selectCategory(id: string) {
   void loadCatalog();
 }
 
-async function openReserve(item: CatalogProduct) {
-  if (!(await ensureReadyMemberAccess())) return;
+async function openReserve(item: CatalogProduct, draft?: BookingIntent) {
+  if (!(await ensureReadyMemberAccess(() => rememberBooking({ businessType: 'FLOWER', product: item, ...draft })))) return;
   today.value = formatDate(new Date());
   if (!(await loadUnavailableDates())) return;
   const slot = nextAppointmentTime(new Date(), unavailableDates.value.map((date) => date.appointmentDate));
@@ -160,14 +184,17 @@ async function openReserve(item: CatalogProduct) {
     return;
   }
   reserveProduct.value = item;
-  form.value = { ...slot, remark: '' };
+  form.value = draft?.date && draft.time && !isPast(draft.date, draft.time) && !isDateUnavailable(draft.date)
+    ? { date: draft.date, time: draft.time, remark: draft.remark || '' }
+    : { ...slot, remark: draft?.remark || '' };
+  await refreshBookedSlots();
 }
 
 function closeReserve() {
   if (!submitting.value) reserveProduct.value = null;
 }
 
-function onDateChange(event: { detail: { value: string } }) {
+async function onDateChange(event: { detail: { value: string } }) {
   const value = event.detail.value;
   if (isDateUnavailable(value)) {
     uni.showToast({ title: '当日预约已满', icon: 'none' });
@@ -180,34 +207,45 @@ function onDateChange(event: { detail: { value: string } }) {
   }
   form.value.date = slot.date;
   form.value.time = slot.time;
-}
-
-function onTimeChange(event: { detail: { value: string } }) {
-  form.value.time = event.detail.value;
+  await refreshBookedSlots();
 }
 
 async function submitReserve() {
   if (!reserveProduct.value || submitting.value) return;
-  if (!(await ensureReadyMemberAccess())) return;
-  if (!(await loadUnavailableDates())) return;
-  if (isDateUnavailable(form.value.date)) {
-    uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
-    return;
-  }
-  if (isPast(form.value.date, form.value.time)) {
-    uni.showToast({ title: '不可选择过往时间', icon: 'none' });
-    return;
-  }
   submitting.value = true;
   try {
-    await createAppointment({
+    if (!(await ensureReadyMemberAccess(() => rememberBooking({
+      businessType: 'FLOWER', product: reserveProduct.value!, ...form.value,
+    })))) return;
+    if (!(await loadUnavailableDates())) return;
+    if (isDateUnavailable(form.value.date)) {
+      uni.showToast({ title: '当日预约已满，请选择其他日期', icon: 'none' });
+      return;
+    }
+    if (!(await refreshBookedSlots())) {
+      uni.showToast({ title: '预约时段未更新，请重试', icon: 'none' });
+      return;
+    }
+    if (appointmentTimeConflicts(form.value.time, bookedSlots.value)) {
+      uni.showToast({ title: '该时间已有确认预约', icon: 'none' });
+      return;
+    }
+    if (isPast(form.value.date, form.value.time)) {
+      uni.showToast({ title: '不可选择过往时间', icon: 'none' });
+      return;
+    }
+    const userId = sessionState.userId;
+    const token = sessionState.token;
+    const created = await createAppointment({
       businessType: 'FLOWER',
       productId: reserveProduct.value.id,
       appointmentDate: form.value.date,
       startTime: form.value.time,
       remark: form.value.remark || undefined,
     });
-    uni.showToast({ title: '预约已提交', icon: 'success' });
+    if (sessionState.userId !== userId || sessionState.token !== token) return;
+    submittedAppointment.value = created;
+    uni.showToast({ title: '已提交，待门店确认', icon: 'none' });
     reserveProduct.value = null;
   } catch (error) {
     uni.showToast({ title: (error instanceof Error ? error.message : '提交失败').slice(0, 18), icon: 'none' });
@@ -216,32 +254,7 @@ async function submitReserve() {
   }
 }
 
-function imageSrc(item: CatalogProduct): string {
-  return imageSources.value[item.id] || '/static/brand/consumption-record-bg.jpg';
-}
 
-function previewProductImage(item: CatalogProduct) {
-  const current = imageSrc(item);
-  uni.previewImage({
-    current,
-    urls: [current],
-    fail: () => uni.showToast({ title: '图片预览失败', icon: 'none' }),
-  });
-}
-
-async function cacheProductImages(items: CatalogProduct[]) {
-  const entries = await Promise.all(
-    items.map(async (item) => [
-      item.id,
-      await resolveImageForDisplay(item.images[0], '/static/brand/consumption-record-bg.jpg'),
-    ] as const),
-  );
-  imageSources.value = Object.fromEntries(entries);
-}
-
-function priceText(value?: number): string {
-  return value === undefined ? '参考价到店确认' : `参考价 ¥${Number(value).toFixed(0)}`;
-}
 
 function isDateUnavailable(date: string): boolean {
   return unavailableDates.value.some((item) => item.appointmentDate === date);
@@ -258,16 +271,27 @@ async function loadUnavailableDates() {
 }
 
 function isPast(date: string, time: string): boolean {
-  return new Date(`${date}T${time}:00`).getTime() <= Date.now();
+  return appointmentTimePast(date, time);
 }
 
-onShow(() => {
+onShow(async () => {
+  if (imagePreview.consumeReturn()) return;
   today.value = formatDate(new Date());
-  return Promise.all([loadCatalog(), loadUnavailableDates()]);
+  const intent = takePendingBooking('FLOWER');
+  if (intent) selectedCategoryId.value = '';
+  await Promise.all([loadCatalog(), loadUnavailableDates()]);
+  if (!intent) return;
+  const product = products.value.find((item) => item.id === intent.product?.id);
+  if (!product) {
+    uni.showModal({ title: '商品暂不可预约', content: '原商品已下架或暂未加载，请重新选择。', showCancel: false });
+    return;
+  }
+  await openReserve(product, intent);
 });
 </script>
 
 <style scoped>
+.favorite-row { display: flex; justify-content: flex-end; margin-top: 14rpx; }
 .page {
   position: relative;
   min-height: 100vh;
@@ -294,7 +318,7 @@ onShow(() => {
 
 .hero {
   border-radius: 32rpx;
-  padding: 42rpx 36rpx;
+  padding: 28rpx 30rpx;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 18rpx 54rpx rgba(31, 41, 55, 0.08);
 }
@@ -365,11 +389,6 @@ onShow(() => {
   box-shadow: 0 16rpx 48rpx rgba(31, 41, 55, 0.08);
 }
 
-.product-image {
-  width: 100%;
-  height: 360rpx;
-  display: block;
-}
 
 .product-body {
   padding: 26rpx;
@@ -383,6 +402,8 @@ onShow(() => {
 }
 
 .product-desc {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   display: block;
   margin-top: 10rpx;
   color: #667085;
@@ -441,7 +462,8 @@ onShow(() => {
 .reserve-panel {
   width: 100%;
   max-height: 86vh;
-  overflow: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
   border-radius: 34rpx;
   padding: 30rpx;
   background: #fff;
@@ -513,4 +535,5 @@ onShow(() => {
 .submit[disabled] {
   opacity: 0.45;
 }
+.product-note { display: block; margin-top: 14rpx; color: #72818d; font-size: 23rpx; line-height: 1.6; }
 </style>

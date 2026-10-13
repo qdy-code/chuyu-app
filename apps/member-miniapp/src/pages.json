@@ -37,6 +37,12 @@
       }
     },
     {
+      "path": "pages/styles/styles",
+      "style": {
+        "navigationBarTitleText": "收藏与款式"
+      }
+    },
+    {
       "path": "pages/consumptions/consumptions",
       "style": {
         "navigationBarTitleText": "消费记录"
