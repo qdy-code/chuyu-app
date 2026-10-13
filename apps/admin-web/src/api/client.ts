@@ -186,6 +186,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  listPospalSync: () => request<{ memberId: string; customerNumber: string; state: string; attempts: number; lastError: string | null }[]>('/admin/pospal/member-sync'),
+  retryPospalSync: (id: string) => request<{ queued: boolean }>(`/admin/pospal/member-sync/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   getPospalStatus: () => request<PospalConfiguration>('/admin/pospal/status'),
   testPospalConnection: () => request<PospalConnectionCheck>('/admin/pospal/connection-test', { method: 'POST' }),
   previewPospalMember: (id: string) => request<PospalMemberPreview>(`/admin/pospal/members/${encodeURIComponent(id)}/preview`, { method: 'POST' }),

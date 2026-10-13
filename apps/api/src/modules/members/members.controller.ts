@@ -144,7 +144,7 @@ export class MembersController {
     }
 
     const phone = await this.wechatMiniapp.resolvePhoneNumber(payload.code, payload.mockPhone);
-    const result = await this.store.updateMemberSelf(userId, { phone });
+    const result = await this.store.updateMemberSelf(userId, { phone }, process.env.MINIAPP_LOGIN_MODE !== 'mock');
     if (!result.member) {
       if (result.reason === 'member not found') {
         throw new NotFoundException(result.reason);

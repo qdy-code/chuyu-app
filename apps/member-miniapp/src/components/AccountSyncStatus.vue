@@ -14,6 +14,12 @@ import { sessionState } from '@/store/session';
 import { profileRefreshState, refreshSessionProfile } from '@/utils/member';
 
 const message = computed(() => {
+  const job = sessionState.profile?.pospal?.memberSync;
+  if (sessionState.profile?.pospal?.state === 'UNLINKED' && job) {
+    if (job.state === 'PENDING' || job.state === 'RUNNING') return '注册已完成，门店会员正在同步，不影响到店购买。';
+    if (job.state === 'FAILED') return '注册已完成，门店会员暂未同步，请到店由工作人员协助。';
+    if (job.state === 'REVIEW') return '注册已完成，请到店核验并关联已有会员账户。';
+  }
   if (sessionState.profile?.pospal?.state === 'UNLINKED') return '请到店由工作人员核验并关联会员账户，关联后可查看余额与积分。';
   if (profileRefreshState.loading) return '正在更新余额与积分，当前显示上次同步数据。';
   if (profileRefreshState.errorMessage) return `暂未更新，以下为上次同步数据。${profileRefreshState.errorMessage}`;

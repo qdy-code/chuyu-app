@@ -232,6 +232,7 @@ export class DataStoreService {
     const seed = createDefaultStore();
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.pospalMemberSync.deleteMany();
       await tx.pospalMemberLink.deleteMany();
       await tx.memberLinkRequest.deleteMany();
       await tx.mutationReceipt.deleteMany();
@@ -2181,6 +2182,7 @@ export class DataStoreService {
   async updateMemberSelf(
     memberId: string,
     payload: UpdateMyProfileRequest,
+    verifiedByWechat = false,
   ): Promise<{ member?: MemberProfile; reason?: string }> {
     return this.withWriteTransaction(async (tx) => {
       const member = await tx.member.findUnique({ where: { id: memberId } });
@@ -2220,14 +2222,32 @@ export class DataStoreService {
         }
       }
 
+      if (usesPospalAccounts() && phone && phone !== member.phone) {
+        const link = await tx.pospalMemberLink.findUnique({ where: { memberId } });
+        const job = await tx.pospalMemberSync.findUnique({ where: { memberId } });
+        if (link || job?.createAttemptedAt) return { reason: '手机号已用于银豹会员，请联系门店核对后修改' };
+      }
       const updated = await tx.member.update({
         where: { id: member.id },
         data: {
-          ...(phone ? { phone } : {}),
+          ...(phone ? { phone, phoneVerifiedAt: verifiedByWechat ? new Date() : phone === member.phone ? member.phoneVerifiedAt : null } : {}),
           ...(nextBirthday ? { birthday: nextBirthday } : {}),
           ...(nickname ? { nickname } : {}),
         },
       });
+
+      // 与手机号保存同一事务落盘；注册和资料更新不等待银豹网络。
+      if (usesPospalAccounts() && updated.phoneVerifiedAt && updated.phone && process.env.POSPAL_ACCOUNT?.trim()) {
+        const link = await tx.pospalMemberLink.findUnique({ where: { memberId } });
+        const job = await tx.pospalMemberSync.findUnique({ where: { memberId } });
+        if ((!link && !job) || (nickname && nickname !== member.nickname) || (phone && phone !== member.phone) || (verifiedByWechat && !member.phoneVerifiedAt)) {
+          await tx.pospalMemberSync.upsert({
+            where: { memberId },
+            create: { memberId, account: process.env.POSPAL_ACCOUNT.trim(), customerNumber: link?.customerNumber || `MP${memberId}`, customerUid: link?.customerUid },
+            update: { revision: { increment: 1 }, ...(job?.state === 'DONE' ? { state: 'PENDING', attempts: 0, nextAttemptAt: new Date() } : {}) },
+          });
+        }
+      }
 
       const after = {
         id: updated.id,

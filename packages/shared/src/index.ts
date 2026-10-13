@@ -29,14 +29,15 @@ export interface MemberProfile {
   discountRate: number;
   balance: number;
   points: number;
-  pospal?: { state: 'UNLINKED' | 'LINKED'; customerNumber?: string; syncedAt?: string };
+  pospal?: { state: 'UNLINKED' | 'LINKED'; customerNumber?: string; syncedAt?: string; memberSync?: { state: string; message?: string } };
 }
 
 export interface PospalConfiguration {
   enabled: boolean;
   configured: boolean;
   missingEnv: string[];
-  readOnly: true;
+  readOnly: boolean;
+  memberSyncEnabled?: boolean;
   accountSource: 'local' | 'pospal';
 }
 

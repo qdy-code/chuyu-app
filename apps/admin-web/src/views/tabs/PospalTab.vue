@@ -7,6 +7,11 @@ import { useDataStore } from '@/composables/useDataStore';
 import { formatMoney } from '@/composables/useFormatters';
 
 const { members, loadAll } = useDataStore();
+type SyncJob = { memberId: string; customerNumber: string; state: string; attempts: number; lastError: string | null };
+const jobs = ref<SyncJob[]>([]);
+const syncLabels: Record<string, string> = { PENDING: '待同步', RUNNING: '同步中', DONE: '已同步', REVIEW: '需核对', FAILED: '失败' };
+async function loadJobs() { try { jobs.value = await api.listPospalSync(); } catch (error) { errorMessage.value = readableErrorMessage(error, '无法读取同步任务'); } }
+async function retryJob(id: string) { try { await api.retryPospalSync(id); await loadJobs(); message.success('已加入同步队列'); } catch (error) { errorMessage.value = readableErrorMessage(error, '无法重试'); } }
 const configuration = ref<PospalConfiguration | null>(null);
 const connection = ref<PospalConnectionCheck | null>(null);
 const selectedMember = ref<string | null>(null);
@@ -84,7 +89,7 @@ async function linkCandidate(customerUid: string) {
   finally { linking.value = false; }
 }
 
-onMounted(loadStatus);
+onMounted(() => { void loadStatus(); void loadJobs(); });
 </script>
 
 <template>
@@ -106,6 +111,17 @@ onMounted(loadStatus);
           <NDescriptionsItem label="测试时间">{{ new Date(connection.checkedAt).toLocaleString() }}</NDescriptionsItem>
         </NDescriptions>
         <p v-if="configuration?.accountSource === 'pospal'" class="hint">已使用银豹账务来源：关联会员后，小程序余额和积分从收银系统读取。</p>
+      </NSpace>
+    </NCard>
+    <NCard title="会员同步">
+      <NSpace vertical>
+        <NAlert type="info">注册后后台同步会员，店内收款无需等待。美甲、饰品、鲜花优惠请分别在银豹配置；这里不修改折扣或资金。</NAlert>
+        <p class="hint">{{ configuration?.memberSyncEnabled ? '后台会员同步已启用' : '后台会员同步尚未启用，任务会保留等待处理' }}</p>
+        <NButton @click="loadJobs">刷新同步任务</NButton>
+        <NTable v-if="jobs.length"><thead><tr><th>小程序会员</th><th>开户编号</th><th>状态</th><th>说明</th><th>处理</th></tr></thead>
+          <tbody><tr v-for="job in jobs" :key="job.memberId"><td>{{ job.memberId }}</td><td>{{ job.customerNumber }}</td><td>{{ syncLabels[job.state] || job.state }}</td><td>{{ job.lastError || '—' }}</td><td><NButton v-if="['FAILED', 'REVIEW'].includes(job.state)" size="small" @click="retryJob(job.memberId)">重新核对并同步</NButton></td></tr></tbody>
+        </NTable>
+        <p v-else class="hint">暂无同步任务。现有用户可重新微信授权手机号后加入队列；手填手机号需门店核实关联。</p>
       </NSpace>
     </NCard>
     <NCard title="会员核对">

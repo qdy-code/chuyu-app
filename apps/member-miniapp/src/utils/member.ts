@@ -9,7 +9,7 @@ import { clearSession, restoreSession, sessionState, setLoginSession, setProfile
 import type { RechargeStatus } from '@member-platform/shared';
 import { reactive, watch } from 'vue';
 
-export const LEGAL_CONSENT_VERSION = '2026-10-11';
+export const LEGAL_CONSENT_VERSION = '2026-10-12-member-sync';
 const LEGAL_CONSENT_STORAGE_KEY = 'member-miniapp-legal-consent';
 let memberAccessInFlight: Promise<boolean> | null = null;
 export const profileRefreshState = reactive({ loading: false, fresh: false, errorMessage: '' });

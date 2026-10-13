@@ -53,7 +53,7 @@ describe('WeChat phone PUT compatibility with the existing member auth boundary'
       .set('x-user-id', 'victim-member').send({ code: 'phone-code' }).expect(200);
     expect(resolvePhoneNumber).toHaveBeenCalledTimes(1);
     expect(resolvePhoneNumber).toHaveBeenCalledWith('phone-code', undefined);
-    expect(updateMemberSelf).toHaveBeenCalledWith('member-owner', { phone: profile.phone });
+    expect(updateMemberSelf).toHaveBeenCalledWith('member-owner', { phone: profile.phone }, process.env.MINIAPP_LOGIN_MODE !== 'mock');
     expect(cachedAccountProfile).toHaveBeenCalledWith('member-owner');
     expect(response.body).toEqual(profile);
   });

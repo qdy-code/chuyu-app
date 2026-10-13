@@ -11,6 +11,7 @@ model Member {
   id           String  @id
   openId       String  @unique
   phone        String? @unique
+  phoneVerifiedAt DateTime?
   nickname     String
   remark       String?
   avatarUrl    String
@@ -23,6 +24,7 @@ model Member {
   accountIdChangedAt DateTime?
   deletedAt    DateTime?
   pospalLink   PospalMemberLink?
+  pospalSync   PospalMemberSync?
 
   @@index([levelId])
 }
@@ -42,6 +44,24 @@ model PospalMemberLink {
   createdAt      DateTime @default(now())
   lastSyncedAt   DateTime?
   member         Member   @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model PospalMemberSync {
+  memberId String @id
+  account String
+  customerNumber String @unique
+  customerUid String?
+  state String @default("PENDING")
+  revision Int @default(1)
+  attempts Int @default(0)
+  createAttemptedAt DateTime?
+  leaseUntil DateTime?
+  nextAttemptAt DateTime @default(now())
+  lastError String?
+  updatedAt DateTime @updatedAt
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([state, nextAttemptAt])
 }
 
 model RechargeOrder {

@@ -74,6 +74,7 @@ describe('Pospal account reads and identity binding', () => {
         create: jest.fn(), update: jest.fn(), findMany: jest.fn().mockResolvedValue([]),
       }, auditLog: { create: jest.fn() },
     };
+    Object.assign(tx, { pospalMemberSync: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() } });
     const prisma = { ...tx, $transaction: async (work: (value: typeof tx) => unknown) => work(tx) };
     service = new PospalService(store as unknown as DataStoreService, client as unknown as PospalClientService, prisma as unknown as PrismaService);
   });

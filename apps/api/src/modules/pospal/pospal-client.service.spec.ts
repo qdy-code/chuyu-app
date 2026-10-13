@@ -69,6 +69,20 @@ describe('PospalClientService', () => {
     await expect(client.checkConnection()).rejects.toThrow('分页');
   });
 
+  it('gates writes and creates a zero-point member with phone uniqueness and no finance payload', async () => {
+    await expect(client.createMember('MP123', '13800138000', '昵称')).rejects.toThrow('尚未启用');
+    expect(fetchMock).not.toHaveBeenCalled();
+    process.env.POSPAL_MEMBER_SYNC_ENABLED = 'true';
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'success', errorCode: 0, result: { uid: '9007199254740993001', number: 'MP123', tel: '13800138000' } })));
+    expect(await client.createMember('MP123', '13800138000', '昵称')).toBe('9007199254740993001');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toMatchObject({ number: 'MP123', tel: '13800138000', validateTelUnique: true, discount: 100, credit: 0, point: 0 });
+    expect(body.money).toBeUndefined(); expect(body.birthday).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'success', errorCode: 0, result: {} })));
+    await client.updateMemberNickname('101', '新的昵称');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ uid: '101', account: 'test-store', updateMask: ['customerExt.nickName'], customerExt: { nickName: '新的昵称' } });
+  });
+
   it('preserves large UID strings, fetches two candidates and normalizes balances', async () => {
     fetchMock.mockResolvedValue(page([{ uid: '9007199254740993001', number: 'VIP1', name: 'test', money: '12.50', giftMoney: 2, point: '10' }]));
     const result = await client.findMembersByPhone('13800138000');

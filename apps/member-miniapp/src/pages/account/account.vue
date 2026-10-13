@@ -25,7 +25,7 @@
           <button
             class="avatar-picker"
             open-type="chooseAvatar"
-            :disabled="avatarSaving || nicknameSaving"
+            :disabled="avatarSaving || nicknameSaving || phoneSaving"
             @chooseavatar="handleWechatAvatar"
           >
             <image class="profile-avatar" :src="avatarSrc" mode="aspectFill" />
@@ -51,14 +51,14 @@
           placeholder="点击选择微信昵称，也可自定义"
         />
         <text class="hint">昵称用于小程序内展示，可随时修改；会员号由系统生成且不可修改。</text>
-        <button class="secondary-btn" form-type="submit" :disabled="nicknameSaving || avatarSaving">
+        <button class="secondary-btn" form-type="submit" :disabled="nicknameSaving || avatarSaving || phoneSaving">
           {{ nicknameSaving ? '保存中...' : setupMode ? '保存昵称并进入' : '保存昵称' }}
         </button>
       </form>
 
       <view v-if="setupMode" class="card">
         <text class="hint">头像选择后即上传保存，昵称点击保存后同步到会员后台。</text>
-        <button class="secondary-btn" :disabled="nicknameSaving || avatarSaving" @click="goHome">稍后完善，进入会员中心</button>
+        <button class="secondary-btn" :disabled="nicknameSaving || avatarSaving || phoneSaving" @click="goHome">稍后完善，进入会员中心</button>
       </view>
 
       <view v-if="!setupMode" class="card">
@@ -104,6 +104,11 @@
           <text class="info-value">{{ sessionState.profile.phone || '未填写' }}</text>
         </view>
         <text class="hint">手机号由微信授权或主动填写，用于门店确认预约和会员资料。</text>
+        <template v-if="sessionState.profile.pospal?.state === 'UNLINKED' && !sessionState.profile.pospal.memberSync">
+          <text class="hint">微信验证手机号后可同步门店会员；已有会员由门店核验关联。</text>
+          <button class="secondary-btn" open-type="getPhoneNumber|agreePrivacyAuthorization" :disabled="phoneSaving || avatarSaving || nicknameSaving || !phoneSyncConsent" @getphonenumber="verifyPhoneForSync">{{ phoneSaving ? '保存中...' : '微信验证手机号并同步会员' }}</button>
+          <button v-if="!phoneSyncConsent" class="secondary-btn" @click="goHome">返回首页确认最新隐私政策</button>
+        </template>
       </view>
 
       <view v-if="!setupMode" class="card danger-zone">
@@ -131,12 +136,22 @@ import { computed, ref } from 'vue';
 import { memberNumber } from '@/utils/member-display';
 import { clearPendingBooking } from '@/utils/booking-flow';
 import { onLoad, onShow } from '@dcloudio/uni-app';
-import { readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
+import { bindWechatPhone, readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
 import { resolveImageForDisplay } from '@/utils/image-cache';
-import { loadSessionProfile } from '@/utils/member';
+import { hasLegalConsent, loadSessionProfile } from '@/utils/member';
 
 const nickname = ref('');
+const phoneSaving = ref(false);
+const phoneSyncConsent = ref(hasLegalConsent());
+async function verifyPhoneForSync(event: { detail: { code?: string } }) {
+  if (phoneSaving.value || avatarSaving.value || nicknameSaving.value || !hasLegalConsent()) return;
+  if (!event.detail.code) { uni.showToast({ title: '手机号授权未完成', icon: 'none' }); return; }
+  phoneSaving.value = true;
+  try { setProfile(await bindWechatPhone(event.detail.code)); uni.showToast({ title: '已加入会员同步', icon: 'success' }); }
+  catch (error) { uni.showToast({ title: readableErrorMessage(error, '请重新授权或联系门店').slice(0, 18), icon: 'none' }); }
+  finally { phoneSaving.value = false; }
+}
 const setupMode = ref(false);
 const nicknameSaving = ref(false);
 const avatarSaving = ref(false);
@@ -159,6 +174,7 @@ const icpRecord = rawIcpRecord && !/X{4,}|请填写|示例/i.test(rawIcpRecord) 
 const publicSecurityRecord = import.meta.env.VITE_PUBLIC_SECURITY_RECORD as string | undefined;
 
 async function refresh() {
+  phoneSyncConsent.value = hasLegalConsent();
   await loadSessionProfile();
   const currentNickname = sessionState.profile?.nickname || '';
   nickname.value = setupMode.value && currentNickname === '微信用户' ? '' : currentNickname;

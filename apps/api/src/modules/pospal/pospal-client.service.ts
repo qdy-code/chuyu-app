@@ -43,7 +43,8 @@ export class PospalClientService {
       enabled: process.env.POSPAL_ENABLED === 'true',
       configured: missingEnv.length === 0,
       missingEnv,
-      readOnly: true,
+      readOnly: process.env.POSPAL_MEMBER_SYNC_ENABLED !== 'true',
+      memberSyncEnabled: process.env.POSPAL_MEMBER_SYNC_ENABLED === 'true',
       accountSource: process.env.POSPAL_ACCOUNT_SOURCE === 'pospal' ? 'pospal' : 'local',
     };
   }
@@ -161,6 +162,45 @@ export class PospalClientService {
   }
 
   private async executeQueryPage(path: string, filters: Record<string, unknown>): Promise<PospalPage> {
+    const { result, requestId } = await this.request(path, { lastId: 0, order: 'asc', ...filters });
+    if (!Array.isArray(result.list) || !result.list.every(isRecord) || typeof result.hasMore !== 'boolean') {
+      throw new BadGatewayException('银豹分页结果格式无效');
+    }
+    return { list: result.list, hasMore: result.hasMore, requestId };
+  }
+
+  async findMemberByNumber(number: string) {
+    const page = await this.queryPage('/openapi/v3/customer/increment-page', { number, limit: 2 });
+    if (page.hasMore || page.list.length > 1) throw new BadGatewayException('银豹会员编号不唯一');
+    const row = page.list[0];
+    if (!row) return null;
+    if (row.number !== number || row.enable !== 1 || row.isLoss === 1 || row.active === -10) throw new BadGatewayException('银豹会员编号或状态不符');
+    return { ...this.memberCandidate(row), phone: typeof row.tel === 'string' ? row.tel.trim() : '' };
+  }
+
+  async createMember(number: string, phone: string, nickname: string) {
+    this.assertMemberWrites();
+    if (!/^[A-Za-z0-9-]{1,32}$/.test(number) || !/^1\d{10}$/.test(phone)) throw new ServiceUnavailableException('银豹开户资料格式无效');
+    const { result } = await this.request('/openapi/v3/customer/add', {
+      number, tel: phone, validateTelUnique: true, name: nickname.slice(0, 64),
+      customerExt: { nickName: nickname.slice(0, 64) }, point: 0, discount: 100, credit: 0, enable: 1,
+    });
+    if (result.number !== number || result.tel !== phone) throw new BadGatewayException('银豹开户结果与请求不符');
+    return identifier(result.uid);
+  }
+
+  async updateMemberNickname(uid: string, nickname: string) {
+    this.assertMemberWrites();
+    identifier(uid);
+    // 只同步小程序昵称，不覆盖收银员维护的姓名、等级、折扣或资金。
+    await this.request('/openapi/v3/customer/update', { uid, updateMask: ['customerExt.nickName'], customerExt: { nickName: nickname.slice(0, 64) } });
+  }
+
+  private assertMemberWrites() {
+    if (!this.getConfiguration().memberSyncEnabled) throw new ServiceUnavailableException('银豹会员同步尚未启用');
+  }
+
+  private async request(path: string, filters: Record<string, unknown>): Promise<{ result: Record<string, unknown>; requestId: string }> {
     const configuration = this.getConfiguration();
     if (!configuration.enabled || !configuration.configured) {
       throw new ServiceUnavailableException('银豹连接未启用或服务端凭证未配置');
@@ -185,7 +225,7 @@ export class PospalClientService {
           'X-Request-Id': requestId,
           'X-Sign': sign,
         },
-        body: JSON.stringify({ lastId: 0, order: 'asc', ...filters, account: process.env.POSPAL_ACCOUNT!.trim() }),
+        body: JSON.stringify({ ...filters, account: process.env.POSPAL_ACCOUNT!.trim() }),
       });
       if (!response.ok) throw new BadGatewayException(`银豹 HTTP ${response.status}，请求编号 ${requestId}`);
       let data: unknown;
@@ -202,10 +242,8 @@ export class PospalClientService {
         throw new BadGatewayException(`${message}，请求编号 ${requestId}`);
       }
       const result = data.result;
-      if (!isRecord(result) || !Array.isArray(result.list) || !result.list.every(isRecord) || typeof result.hasMore !== 'boolean') {
-        throw new BadGatewayException('银豹分页结果格式无效');
-      }
-      return { list: result.list, hasMore: result.hasMore, requestId };
+      if (!isRecord(result)) throw new BadGatewayException('银豹结果格式无效');
+      return { result, requestId };
     } catch (error) {
       if (error instanceof BadGatewayException) throw error;
       throw new BadGatewayException(`银豹连接失败或超时，请求编号 ${requestId}`);

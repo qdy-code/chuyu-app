@@ -30,10 +30,13 @@ export class PospalService {
     if (!member) throw new NotFoundException('member not found');
     if (this.client.getConfiguration().accountSource !== 'pospal') return member;
     const link = await this.prisma.pospalMemberLink.findUnique({ where: { memberId } });
-    if (!link || !link.lastSyncedAt || link.account !== this.client.getAccount()) {
-      return { ...member, balance: 0, points: 0, levelName: '会员', discountRate: 1, pospal: { state: 'UNLINKED' } };
+    const job = await this.prisma.pospalMemberSync.findUnique({ where: { memberId } });
+    const memberSync = job ? { state: job.state, message: job.lastError || undefined } : undefined;
+    if (!link || link.account !== this.client.getAccount()) {
+      return { ...member, balance: 0, points: 0, levelName: '会员', discountRate: 1, pospal: { state: 'UNLINKED', memberSync } };
     }
-    return { ...member, pospal: { state: 'LINKED', customerNumber: link.customerNumber, syncedAt: link.lastSyncedAt.toISOString() } };
+    if (!link.lastSyncedAt) return { ...member, balance: 0, points: 0, levelName: '会员', discountRate: 1, pospal: { state: 'UNLINKED', customerNumber: link.customerNumber, memberSync } };
+    return { ...member, pospal: { state: 'LINKED', customerNumber: link.customerNumber, syncedAt: link.lastSyncedAt.toISOString(), memberSync } };
   }
 
   async recharges(memberId: string) {
@@ -91,6 +94,7 @@ export class PospalService {
         if (existing.memberId === memberId && existing.customerUid === customerUid && existing.account === account) return { customerNumber: existing.customerNumber };
         throw new BadRequestException('小程序会员或银豹会员已关联其他账户，请先人工核对');
       }
+      await tx.pospalMemberSync.updateMany({ where: { memberId, state: { in: ['REVIEW', 'FAILED', 'PENDING'] } }, data: { state: 'DONE', lastError: null } });
       const syncedAt = this.client.getConfiguration().accountSource === 'pospal' ? new Date() : null;
       await tx.pospalMemberLink.create({ data: { memberId, customerUid, customerNumber: snapshot.number, account, lastSyncedAt: syncedAt } });
       if (syncedAt) await tx.member.update({ where: { id: memberId }, data: { balance: snapshot.balance, points: snapshot.points, levelName: snapshot.levelName, discountRate: snapshot.discountRate } });
