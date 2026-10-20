@@ -21,8 +21,8 @@ function setup(t, overrides = {}, initialProfile = null) {
     getStorageSync: (key) => storage.get(key),
     setStorageSync: (key, value) => storage.set(key, value),
     removeStorageSync: (key) => storage.delete(key),
-    navigateTo: (options) => { navigation.push(options.url); options.complete?.(); },
-    switchTab: (options) => { navigation.push(options.url); options.complete?.(); },
+    navigateTo: (options) => { navigation.push(options.url); options.success?.(); options.complete?.(); },
+    switchTab: (options) => { navigation.push(options.url); options.success?.(); options.complete?.(); },
     showModal: (options) => { notices.push(options); options.success?.({ confirm: accept }); },
     showToast: (options) => notices.push(options),
     showLoading() {}, hideLoading() {},
@@ -80,12 +80,12 @@ function setup(t, overrides = {}, initialProfile = null) {
       if (dependency === '@/store/session') return sessionModule;
       if (dependency === '@/utils/api') return api;
       if (dependency === '@/utils/image-cache') return { resolveImageForDisplay: async (source, fallback) => source || fallback };
-      if (dependency === '@dcloudio/uni-app') return { onShow: (hook) => pageHooks.push(hook), onLoad() {} };
+      if (dependency === '@dcloudio/uni-app') return { onShow: (hook) => pageHooks.push(hook), onLoad: (hook) => hooks.set(name + ':load', hook), onUnload: (hook) => hooks.set(name + ':unload', hook) };
       if (dependency.endsWith('.vue')) return {};
       if (dependency.startsWith('@/')) return load(dependency.slice(2) + '.ts');
       throw new Error(`Unexpected dependency: ${dependency}`);
     };
-    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout,
+    scope.run(() => vm.runInNewContext(code, { exports, require: requireModule, uni, console, Date, setTimeout, getCurrentPages: () => overrides.pageStack || [],
       defineProps: () => overrides.props || {}, defineEmits: () => (event, ...args) => emissions.push({ event, args }),
     }));
     hooks.set(name, pageHooks);
@@ -472,6 +472,9 @@ test('reference price preserves cents and unset price stays a confirmation messa
   const display = ctx.load('utils/catalog-display.ts');
   assert.equal(display.referencePriceText(128.5), '参考价 ¥128.50');
   assert.equal(display.referencePriceText(), '参考价到店确认');
+  assert.equal(display.productPriceText(128.5), '¥128.50');
+  assert.equal(display.productPriceText(0), '¥0.00');
+  assert.equal(display.productPriceText(), '到店定价');
 });
 
 test('store actions use confirmed public contact without starting a real phone call', (t) => {
@@ -732,4 +735,100 @@ test('an unlinked member sees a newly confirmed store binding without waiting fo
   assert.equal(ctx.session.profile.pospal.state, 'LINKED');
   assert.equal(ctx.session.profile.pospal.syncedAt, linked.pospal.syncedAt);
   assert.equal(member.profileRefreshState.fresh, false);
+});
+
+
+function detailPage(ctx, id = product.id) {
+  const name = 'pages/nail-detail/nail-detail.vue';
+  const page = ctx.load(name, ['loadProduct', 'product', 'loading', 'error', 'openAppointment', 'booking', 'imagePreview', 'backToCatalog']);
+  ctx.hooks.get(name + ':load')({ id });
+  return page;
+}
+
+test('detail direct entry reads public catalog only; invalid, removed and failed requests have distinct states', async (t) => {
+  let reads = 0;
+  const ctx = setup(t, { listCatalogProducts: async () => { reads++; return [product]; },
+    getMyCachedProfile: async () => { throw Error('detail must not read member data'); } });
+  const page = detailPage(ctx, ''); await page.loadProduct();
+  assert.equal(reads, 0); assert.equal(page.product.value, null); assert.equal(page.error.value, '');
+  ctx.hooks.get('pages/nail-detail/nail-detail.vue:load')({ id: product.id });
+  await page.loadProduct(); assert.equal(page.product.value.id, product.id);
+  ctx.api.listCatalogProducts = async () => { throw Error('offline'); };
+  await page.loadProduct(); assert.match(page.error.value, /网络/); assert.equal(page.product.value, null);
+  await page.openAppointment(); assert.equal(ctx.navigation.length, 0);
+  ctx.api.listCatalogProducts = async () => [{ ...product, isActive: false }];
+  await page.loadProduct(); assert.equal(page.error.value, ''); assert.equal(page.product.value, null);
+  ctx.api.listCatalogProducts = async () => [product];
+  await page.loadProduct(); assert.equal(page.product.value.id, product.id); assert.equal(ctx.payloads.length, 0);
+});
+
+test('detail rejects stale responses and ignores responses after page unload', async (t) => {
+  const pending = [];
+  const ctx = setup(t, { listCatalogProducts: () => new Promise(resolve => pending.push(resolve)) });
+  const page = detailPage(ctx);
+  const first = page.loadProduct(), second = page.loadProduct();
+  pending[1]([product]); await second; pending[0]([]); await first;
+  assert.equal(page.product.value.id, product.id);
+  const third = page.loadProduct(); ctx.hooks.get('pages/nail-detail/nail-detail.vue:unload')();
+  pending[2]([product]); await third; assert.equal(page.product.value, null);
+});
+
+test('detail native preview return skips reload once; later visits revalidate availability', async (t) => {
+  let reads = 0;
+  const ctx = setup(t, { listCatalogProducts: async () => { reads++; return [product]; } });
+  const page = detailPage(ctx); const show = ctx.hooks.get('pages/nail-detail/nail-detail.vue')[0];
+  await show(); page.imagePreview.start(); await show(); assert.equal(reads, 1);
+  await show(); assert.equal(reads, 2);
+});
+
+test('detail booking reuses pending intent without submitting and prevents simultaneous taps', async (t) => {
+  const ctx = setup(t, {}, linked); authorize(ctx);
+  const page = detailPage(ctx); await page.loadProduct();
+  await Promise.all([page.openAppointment(), page.openAppointment()]);
+  assert.equal(ctx.navigation.length, 1);
+  assert.equal(ctx.navigation[0], '/pages/appointment/appointment?booking=1');
+  assert.equal(ctx.load('utils/booking-flow.ts').takePendingBooking('NAIL').product.id, product.id);
+  assert.equal(ctx.payloads.length, 0); assert.equal(page.booking.value, false);
+});
+
+test('detail cancelled login never prepares or submits a booking; setup keeps chosen product', async (t) => {
+  const cancelled = setup(t); cancelled.cancel();
+  const first = detailPage(cancelled); await first.loadProduct(); await first.openAppointment();
+  assert.equal(cancelled.navigation.length, 0); assert.equal(cancelled.payloads.length, 0); assert.equal(first.booking.value, false);
+  const ctx = setup(t); const page = detailPage(ctx); await page.loadProduct(); await page.openAppointment();
+  assert.equal(ctx.navigation.at(-1), '/pages/index/index');
+  assert.equal(ctx.load('utils/booking-flow.ts').takePendingBooking('NAIL').product.id, product.id);
+  assert.equal(ctx.payloads.length, 0);
+});
+
+test('return from detail refreshes selected category without removing visible catalog; failure retains it', async (t) => {
+  let rejectRead; let category;
+  const ctx = setup(t);
+  const page = ctx.load('pages/nail/nail.vue', ['loadCatalog', 'openDetail', 'selectedCategoryId', 'products', 'loading', 'catalogError']);
+  await page.loadCatalog(); page.selectedCategoryId.value = 'chosen';
+  ctx.api.listCatalogProducts = (_, id) => { category = id; return new Promise((_, reject) => { rejectRead = reject; }); };
+  page.openDetail(product);
+  assert.equal(ctx.navigation.at(-1), '/pages/nail-detail/nail-detail?id=style-test');
+  const refresh = ctx.hooks.get('pages/nail/nail.vue')[0]();
+  assert.equal(page.loading.value, false); assert.equal(page.products.value[0].id, product.id); assert.equal(category, 'chosen');
+  rejectRead(Error('offline')); await refresh;
+  assert.equal(page.catalogError.value, ''); assert.equal(page.products.value[0].id, product.id);
+});
+
+test('detail with no prior page returns to original catalog route', (t) => {
+  const ctx = setup(t); detailPage(ctx).backToCatalog();
+  assert.equal(ctx.navigation[0], '/pages/nail/nail');
+});
+
+test('nail list can retry a failed photo and preview the chosen original without persisting a failure on new photos', async (t) => {
+  const props = vue.reactive({ images: ['/uploads/original.jpg', '/uploads/side.jpg'], appearance: 'nail-list' });
+  const ctx = setup(t, { props });
+  const gallery = ctx.load('components/ProductGallery.vue', ['markFailed', 'retryImage', 'failedImages', 'preview']);
+  await vue.nextTick();
+  gallery.markFailed(1); assert.equal(gallery.failedImages.value[1], true);
+  gallery.retryImage(1); assert.equal(gallery.failedImages.value[1], false);
+  await gallery.preview(1); assert.equal(ctx.notices.at(-1).current, 'https://example.test/uploads/side.jpg');
+  gallery.markFailed(0); props.images = ['/uploads/another.jpg']; await vue.nextTick();
+  assert.equal(gallery.failedImages.value[0], undefined);
+  assert.equal(ctx.payloads.length, 0);
 });

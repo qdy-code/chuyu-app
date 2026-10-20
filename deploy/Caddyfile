@@ -2,7 +2,7 @@
     admin off
 }
 
-{$APP_DOMAIN:moonisle.shop} {
+{$APP_DOMAIN:www.moonisle.shop} {
     encode zstd gzip
 
     request_body {
@@ -31,6 +31,28 @@
     }
 }
 
-www.{$APP_DOMAIN:moonisle.shop} {
-    redir https://{$APP_DOMAIN:moonisle.shop}{uri} permanent
+moonisle.shop {
+    redir https://{$APP_DOMAIN:www.moonisle.shop}{uri} permanent
+}
+
+# Keep already-installed clients working during the domain transition.
+chuy.shop {
+    request_body {
+        max_size 20MB
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        X-Frame-Options DENY
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    }
+    handle_path /api/* {
+        reverse_proxy api:3000
+    }
+    handle /uploads/* {
+        reverse_proxy api:3000
+    }
+    handle {
+        redir https://{$APP_DOMAIN:www.moonisle.shop}{uri} permanent
+    }
 }

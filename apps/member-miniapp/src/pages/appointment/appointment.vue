@@ -89,8 +89,8 @@
       <text class="record-summary-text">{{ appointments.length === 0 ? '暂无预约记录' : '点击查看全部预约记录列表' }}</text>
     </view>
 
-    <view v-if="showBookingPanel" class="panel-mask" @click="closeBookingPanel">
-      <view class="booking-panel" @click.stop>
+    <view v-if="showBookingPanel" class="panel-mask booking-mask" @click="closeBookingPanel">
+      <view class="booking-panel detail-theme" @click.stop>
         <view class="section-head panel-head">
           <view>
             <text class="eyebrow">新预约</text>
@@ -545,6 +545,9 @@ function ensureFutureTimeSelection() {
 }
 </script>
 
+<style>
+@import '@/styles/product-detail.css';
+</style>
 <style scoped>
 .repeat-button { margin: 20rpx 0 0; border-radius: 999rpx; background: #edf2f4; color: #3d4652; font-size: 25rpx; }
 .repeat-button::after { border: 0; }
@@ -941,4 +944,16 @@ function ensureFutureTimeSelection() {
 }
 .clear-style { margin: 14rpx 0 0; padding: 8rpx 18rpx; border-radius: 999rpx; background: #edf2f4; color: #3d4652; font-size: 23rpx; }
 .clear-style::after { border: 0; }
+.booking-mask { align-items: flex-end; padding: 16px 0 0; }
+.booking-panel { max-width: 520px; max-height: 88vh; padding: 24px 24px calc(24px + env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--detail-surface); box-shadow: none; }
+.booking-panel .close-btn { width: 48px; height: 48px; min-width: 48px; padding: 0; line-height: 48px; font-size: 28px; border-radius: 12px; background: var(--detail-subtle); color: var(--detail-muted); }
+.booking-panel .selected-summary { margin: 16px 0; padding: 16px; border-radius: 12px; background: var(--detail-subtle); }
+.booking-panel .summary-text { color: var(--detail-text); }
+.booking-panel .clear-style { min-height: 48px; margin-top: 8px; padding: 12px 8px; line-height: 24px; font-size: 14px; color: var(--detail-muted); background: var(--detail-surface); border-radius: 12px; }
+.booking-panel .submit { min-height: 48px; border-radius: 12px; }
+@media (max-width: 359px) { .booking-panel { padding-left: 16px; padding-right: 16px; } }
+/* A short visual entrance; closing remains immediate so it cannot delay navigation. */
+.booking-panel { animation: booking-panel-in 220ms ease-out; }
+@keyframes booking-panel-in { from { opacity: .5; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .booking-panel { animation: none; } }
 </style>

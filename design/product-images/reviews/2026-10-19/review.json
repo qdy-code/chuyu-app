@@ -1,0 +1,40 @@
+{
+  "review_date": "2026-10-19",
+  "reviewer": "Codex fresh file comparison and WeChat simulator",
+  "approved_for_publication": false,
+  "original_files_unchanged": true,
+  "verdicts": {
+    "source": {
+      "type": "user-supplied photograph",
+      "detail": "usable candidate",
+      "list": "fails full-nail visibility"
+    },
+    "v1": {
+      "type": "AI assisted product edit",
+      "fidelity": "fail",
+      "detail_layout": "pass",
+      "list": "fail"
+    },
+    "r2": {
+      "type": "AI assisted product edit",
+      "fidelity": "fail",
+      "detail_layout": "pass",
+      "list": "fail"
+    },
+    "concept": {
+      "type": "AI concept",
+      "fidelity": "not applicable",
+      "detail_layout": "pass",
+      "list_layout": "pass",
+      "shape_spec": "oval rather than short almond"
+    }
+  },
+  "findings": [
+    "V1/R2 retain an added white small star absent from source",
+    "V1/R2 redraw pearlescent texture",
+    "List aspectFill clips upper star nail on source and both edits",
+    "Generated PNGs are about 1.7-1.8 MiB; delivery variants needed"
+  ],
+  "production_mutations": false,
+  "regenerated_images": false
+}

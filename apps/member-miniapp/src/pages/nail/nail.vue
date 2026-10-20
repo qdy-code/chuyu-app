@@ -1,11 +1,9 @@
 <template>
-  <view class="page">
+  <view class="page detail-theme">
     <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="hero">
-      <text class="eyebrow">MOONISLE</text>
-      <text class="title">美甲作品库</text>
-      <text class="desc">月光色、低饱和、清透质感，到店完成专属款式。</text>
-      <button class="primary-btn" @click="openAppointment()">预约到店</button>
+      <text class="title">美甲作品</text>
+      <button class="primary-btn" hover-class="detail-link-pressed" @click="openAppointment()">预约到店</button>
     </view>
 
     <scroll-view class="category-scroll" scroll-x>
@@ -26,29 +24,28 @@
     <view v-if="loading" class="empty">正在加载作品...</view>
     <view v-else-if="catalogError" class="empty">
       <text>{{ catalogError }}</text>
-      <button class="reserve-btn" @click="loadCatalog">重新加载</button>
+      <button class="reserve-btn" @click="loadCatalog()">重新加载</button>
     </view>
     <view v-else-if="products.length === 0" class="empty">
       <text>暂时没有上架作品，可先预约到店沟通</text>
     </view>
     <view v-else class="product-list">
       <view v-for="item in products" :key="item.id" class="product-card">
-        <ProductGallery :images="item.images" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
+        <ProductGallery :images="item.images" appearance="nail-list" @preview-start="imagePreview.start" @preview-failed="imagePreview.cancel" />
         <view class="product-body">
-          <view>
-            <text class="product-name">{{ item.name }}</text>
-            <text class="product-desc">{{ item.description || '到店沟通款式细节' }}</text>
+          <view class="product-heading">
+            <text class="product-name" @click="openDetail(item)">{{ item.name }}</text>
+            <text class="price">{{ productPriceText(item.referencePrice) }}</text>
           </view>
-          <text class="product-note">参考价、服务时长及卸甲等加项，请与门店确认。</text>
-          <view class="favorite-row"><FavoriteButton :product="item" /></view>
-          <view class="product-foot">
-            <text class="price">{{ referencePriceText(item.referencePrice) }}</text>
-            <button class="reserve-btn" @click="openAppointment(item)">预约此款</button>
+          <view class="product-actions">
+            <button class="detail-link" hover-class="detail-link-pressed" @click="openDetail(item)">查看详情</button>
+            <FavoriteButton :product="item" appearance="list" />
+            <button class="reserve-btn" hover-class="detail-link-pressed" @click="openAppointment(item)">预约此款</button>
           </view>
         </view>
       </view>
     </view>
-    <StoreContact />
+    <StoreContact appearance="compact" />
   </view>
 </template>
 
@@ -57,7 +54,7 @@ import ProductGallery from '@/components/ProductGallery.vue';
 import FavoriteButton from '@/components/FavoriteButton.vue';
 import { createImagePreviewReturnGuard } from '@/utils/image-preview-return';
 import StoreContact from '@/components/StoreContact.vue';
-import { referencePriceText } from '@/utils/catalog-display';
+import { productPriceText } from '@/utils/catalog-display';
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { CatalogProduct, ProductCategory } from '@member-platform/shared';
@@ -93,10 +90,12 @@ const loading = ref(false);
 const imagePreview = createImagePreviewReturnGuard();
 const catalogError = ref('');
 let catalogRevision = 0;
+let detailReturnPending = false;
+let openingDetail = false;
 
-async function loadCatalog() {
+async function loadCatalog(preserveContent = false) {
   const request = ++catalogRevision;
-  loading.value = true;
+  loading.value = !preserveContent;
   catalogError.value = '';
   try {
     const [categoryList, productList] = await Promise.all([
@@ -108,6 +107,10 @@ async function loadCatalog() {
     products.value = productList;
   } catch (error) {
     if (request !== catalogRevision) return;
+    if (preserveContent) {
+      uni.showToast({ title: '更新失败，暂保留当前作品', icon: 'none' });
+      return;
+    }
     categories.value = fallbackEnabled ? fallbackCategories : [];
     products.value = fallbackEnabled
       ? fallbackProducts.filter((item) => !selectedCategoryId.value || item.categoryId === selectedCategoryId.value)
@@ -117,6 +120,16 @@ async function loadCatalog() {
   } finally {
     if (request === catalogRevision) loading.value = false;
   }
+}
+
+function openDetail(product: CatalogProduct) {
+  if (openingDetail) return;
+  openingDetail = true;
+  uni.navigateTo({
+    url: `/pages/nail-detail/nail-detail?id=${encodeURIComponent(product.id)}`,
+    success: () => { detailReturnPending = true; },
+    fail: () => { openingDetail = false; uni.showToast({ title: '详情打开失败，请重试', icon: 'none' }); },
+  });
 }
 
 function selectCategory(id: string) {
@@ -134,169 +147,39 @@ async function openAppointment(product?: CatalogProduct) {
 
 
 onShow(() => {
+  openingDetail = false;
   if (imagePreview.consumeReturn()) return;
-  return loadCatalog();
+  const preserveContent = detailReturnPending;
+  detailReturnPending = false;
+  return loadCatalog(preserveContent);
 });
 </script>
 
+<style>
+@import '@/styles/product-detail.css';
+</style>
 <style scoped>
-.favorite-row { display: flex; justify-content: flex-end; margin-top: 14rpx; }
-.page {
-  position: relative;
-  min-height: 100vh;
-  padding: 28rpx 24rpx 48rpx;
-  background: #f7f4ef;
-}
-
-.page-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  width: 100vw;
-  height: 100vh;
-  pointer-events: none;
-}
-
-.hero,
-.category-scroll,
-.product-list,
-.empty {
-  position: relative;
-  z-index: 1;
-}
-
-.hero {
-  overflow: hidden;
-  border-radius: 32rpx;
-  padding: 28rpx 30rpx;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 18rpx 54rpx rgba(31, 41, 55, 0.08);
-}
-
-.eyebrow {
-  color: #72818d;
-  font-size: 22rpx;
-  font-weight: 900;
-}
-
-.title {
-  display: block;
-  margin-top: 12rpx;
-  color: #111827;
-  font-size: 48rpx;
-  font-weight: 900;
-}
-
-.desc {
-  display: block;
-  margin-top: 14rpx;
-  max-width: 560rpx;
-  color: #667085;
-  font-size: 27rpx;
-  line-height: 1.55;
-}
-
-.primary-btn {
-  margin: 30rpx 0 0;
-  width: 220rpx;
-  border-radius: 999rpx;
-  background: #3d4652;
-  color: #f7f4ef;
-  font-weight: 900;
-}
-
-.category-scroll {
-  margin-top: 24rpx;
-  white-space: nowrap;
-}
-
-.category-row {
-  display: flex;
-  gap: 14rpx;
-  padding-bottom: 4rpx;
-}
-
-.category-chip {
-  margin: 0;
-  min-width: 132rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.84);
-  color: #667085;
-  font-size: 25rpx;
-}
-
-.category-chip.active {
-  background: #3d4652;
-  color: #f7f4ef;
-}
-
-.product-list {
-  margin-top: 22rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 22rpx;
-}
-
-.product-card {
-  overflow: hidden;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 16rpx 48rpx rgba(31, 41, 55, 0.08);
-}
-
-
-.product-body {
-  padding: 26rpx;
-}
-
-.product-name {
-  display: block;
-  color: #111827;
-  font-size: 32rpx;
-  font-weight: 900;
-}
-
-.product-desc {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  display: block;
-  margin-top: 10rpx;
-  color: #667085;
-  font-size: 25rpx;
-  line-height: 1.5;
-}
-
-.product-foot {
-  margin-top: 22rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
-}
-
-.price {
-  color: #3d4652;
-  font-size: 26rpx;
-  font-weight: 900;
-}
-
-.reserve-btn {
-  margin: 0;
-  min-width: 148rpx;
-  border-radius: 999rpx;
-  background: #edf2f4;
-  color: #3d4652;
-  font-size: 25rpx;
-  font-weight: 900;
-}
-
-.empty {
-  margin-top: 28rpx;
-  padding: 42rpx;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.86);
-  color: #667085;
-  text-align: center;
-}
-.product-note { display: block; margin-top: 14rpx; color: #72818d; font-size: 23rpx; line-height: 1.6; }
+.page { position: relative; min-height: 100vh; padding: 16px 12px 32px; background: #f7f4ef; box-sizing: border-box; }
+.page-bg { position: fixed; inset: 0; z-index: 0; width: 100vw; height: 100vh; opacity: .35; pointer-events: none; }
+.hero, .category-scroll, .product-list, .empty { position: relative; z-index: 1; }
+.hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 4px; }
+.title { color: var(--detail-text); font-size: 28px; font-weight: 600; line-height: 1.4; }
+.primary-btn { margin: 0; padding: 12px 16px; min-height: 48px; border-radius: 12px; background: var(--detail-primary); color: var(--detail-on-primary); font-size: 14px; line-height: 24px; }
+.primary-btn::after, .detail-link::after, .reserve-btn::after, .category-chip::after { border: 0; }
+.category-scroll { margin-top: 16px; white-space: nowrap; }
+.category-row { display: flex; gap: 8px; padding-bottom: 4px; }
+.category-chip { min-width: 72px; min-height: 48px; margin: 0; padding: 12px 16px; border-radius: 24px; background: rgba(255,255,255,.84); color: var(--detail-muted); font-size: 14px; line-height: 24px; }
+.category-chip.active { background: var(--detail-primary); color: var(--detail-on-primary); }
+.product-list { margin-top: 16px; display: flex; flex-direction: column; gap: 24px; }
+.product-card { overflow: hidden; border-radius: 16px; background: var(--detail-surface); }
+.product-body { padding: 16px; }
+.product-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.product-name { flex: 1; min-width: 120px; overflow-wrap: anywhere; color: var(--detail-text); font-size: 20px; font-weight: 600; line-height: 1.5; }
+.price { color: var(--detail-primary); font-size: 16px; line-height: 1.5; white-space: nowrap; }
+.product-actions { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+.detail-link { margin: 0 auto 0 0; padding: 12px 0; min-width: 72px; min-height: 48px; font-size: 14px; line-height: 24px; color: var(--detail-primary); background: transparent; }
+.detail-link-pressed { opacity: .7; }
+.reserve-btn { flex: 1; min-width: 88px; margin: 0; padding: 12px 12px; border-radius: 12px; background: var(--detail-primary); color: var(--detail-on-primary); font-size: 14px; line-height: 24px; }
+.empty { margin-top: 24px; padding: 24px; border-radius: 16px; background: var(--detail-surface); color: var(--detail-muted); text-align: center; line-height: 1.7; }
+.empty .reserve-btn { margin-top: 16px; }
 </style>

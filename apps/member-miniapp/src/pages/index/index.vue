@@ -29,7 +29,7 @@
         </view>
       </view>
       <button class="primary-btn" :disabled="loggingIn || !legalAccepted" @click="handleEnter">
-        {{ loggingIn ? '登录中...' : '微信登录' }}
+        {{ loggingIn ? '登录中...' : '登录' }}
       </button>
     </view>
 
@@ -49,15 +49,15 @@
 
     <view v-else-if="needsPhoneSetup" class="entry-card">
       <text class="entry-kicker">首次使用</text>
-      <text class="entry-title">授权手机号</text>
-      <text class="entry-desc">通过微信授权自动填写手机号，用于门店会员核对和预约联系。</text>
+      <text class="entry-title">手机号快捷登录</text>
+      <text class="entry-desc">用于门店会员核对和预约联系。</text>
       <button
         class="primary-btn"
         open-type="getPhoneNumber|agreePrivacyAuthorization"
         :disabled="savingPhone || linkBusy"
         @getphonenumber="handleWechatPhone"
       >
-        {{ savingPhone ? '保存中...' : '微信授权手机号' }}
+        {{ savingPhone ? '保存中...' : '一键验证手机号' }}
       </button>
       <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="showManualPhone = !showManualPhone">
         {{ showManualPhone ? '收起手动填写' : '手动填写手机号' }}
@@ -213,7 +213,10 @@ async function loadNextAppointment() {
   }
 }
 
-const welcomeText = computed(() => sessionState.profile?.nickname || '我的');
+const welcomeText = computed(() => {
+  const nickname = sessionState.profile?.nickname;
+  return nickname && nickname !== '微信用户' ? nickname : sessionState.userId ? '欢迎来到月光石屿' : '我的';
+});
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
 const needsProfileSetup = computed(() => Boolean(sessionState.profile &&
   (!sessionState.profile.avatarUrl || sessionState.profile.nickname === '微信用户')));
@@ -267,7 +270,7 @@ async function handleWechatPhone(event: { detail: { code?: string; errMsg?: stri
     const content = /deny|cancel/i.test(errMsg)
       ? '你暂未授权手机号，可以手动填写，或稍后再次授权。'
       : errno === 1400001
-        ? '微信手机号授权暂不可用，可以手动填写或联系门店。'
+        ? '手机号验证暂不可用，可以手动填写或联系门店。'
         : '手机号授权未完成，可以重新授权或手动填写。';
     uni.showModal({ title: '手机号授权', content, showCancel: false });
     return;

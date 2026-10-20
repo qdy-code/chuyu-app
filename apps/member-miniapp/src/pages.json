@@ -7,6 +7,12 @@
       }
     },
     {
+      "path": "pages/nail-detail/nail-detail",
+      "style": {
+        "navigationBarTitleText": "作品详情"
+      }
+    },
+    {
       "path": "pages/accessory/accessory",
       "style": {
         "navigationBarTitleText": "饰品"

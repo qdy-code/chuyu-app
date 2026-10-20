@@ -1,0 +1,109 @@
+{
+  "checks": [
+    {
+      "name": "Initial catalog has three demo products",
+      "pass": true
+    },
+    {
+      "name": "Detail opens correct product and keeps actions",
+      "pass": true
+    },
+    {
+      "name": "Gallery advances to second image",
+      "pass": true
+    },
+    {
+      "name": "Fullscreen gallery advances to third image",
+      "pass": true
+    },
+    {
+      "name": "Preview return preserves detail image index",
+      "pass": true
+    },
+    {
+      "name": "Favorite saved after persistence",
+      "pass": true
+    },
+    {
+      "name": "Favorite failure preserves prior state",
+      "pass": true
+    },
+    {
+      "name": "Booking opens modal and inerts background",
+      "pass": true
+    },
+    {
+      "name": "Disabled mock slot cannot be selected",
+      "pass": true
+    },
+    {
+      "name": "Confirmation retains note and slot",
+      "pass": true
+    },
+    {
+      "name": "Receipt explicitly states no real booking",
+      "pass": true
+    },
+    {
+      "name": "Back restores list scroll position",
+      "pass": true
+    },
+    {
+      "name": "Category filter keeps expected product",
+      "pass": true
+    },
+    {
+      "name": "Failure has retry, no stale booking action",
+      "pass": true
+    },
+    {
+      "name": "Retry restores product",
+      "pass": true
+    },
+    {
+      "name": "Missing image and price are explicit",
+      "pass": true
+    },
+    {
+      "name": "Removed product does not offer booking",
+      "pass": true
+    },
+    {
+      "name": "Long content fits compact preview",
+      "pass": true
+    },
+    {
+      "name": "Reduced mode suppresses sheet animation",
+      "pass": true
+    },
+    {
+      "name": "Modal cleanup releases background",
+      "pass": true
+    },
+    {
+      "name": "Reset returns usable initial state",
+      "pass": true
+    },
+    {
+      "name": "Actual 320px viewport has no horizontal overflow",
+      "pass": true
+    },
+    {
+      "name": "Direct detail entry works",
+      "pass": false
+    },
+    {
+      "name": "No uncaught browser errors",
+      "pass": true
+    },
+    {
+      "name": "No external API/network calls",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "externalRequests": 0,
+  "failures": [
+    "Direct detail entry works"
+  ]
+}

@@ -6,7 +6,7 @@
       <view class="header-copy">
         <text class="header-kicker">MOONSTONE ISLE</text>
         <text class="header-title">{{ setupMode ? '完善会员资料' : '账户资料' }}</text>
-        <text class="header-desc">{{ setupMode ? '选择微信头像和昵称，保存到门店会员后台；也可稍后完善。' : '修改头像和昵称，查看会员号并管理个人资料' }}</text>
+        <text class="header-desc">{{ setupMode ? '选择头像和昵称，保存到门店会员后台；也可稍后完善。' : '修改头像和昵称，查看会员号并管理个人资料' }}</text>
       </view>
     </view>
 
@@ -31,7 +31,7 @@
             <image class="profile-avatar" :src="avatarSrc" mode="aspectFill" />
           </button>
           <view class="avatar-copy">
-            <text class="avatar-title">{{ avatarSaving ? '头像上传中...' : '点击头像选择微信头像' }}</text>
+            <text class="avatar-title">{{ avatarSaving ? '头像上传中...' : '点击选择头像' }}</text>
             <text class="hint">保存后用于会员资料和预约信息。</text>
           </view>
         </view>
@@ -48,7 +48,7 @@
           type="nickname"
           name="nickname"
           maxlength="30"
-          placeholder="点击选择微信昵称，也可自定义"
+          placeholder="选择昵称，也可自行填写"
         />
         <text class="hint">昵称用于小程序内展示，可随时修改；会员号由系统生成且不可修改。</text>
         <button class="secondary-btn" form-type="submit" :disabled="nicknameSaving || avatarSaving || phoneSaving">
@@ -103,10 +103,10 @@
           <text class="info-label">联系手机号</text>
           <text class="info-value">{{ sessionState.profile.phone || '未填写' }}</text>
         </view>
-        <text class="hint">手机号由微信授权或主动填写，用于门店确认预约和会员资料。</text>
+        <text class="hint">手机号由你主动验证或填写，用于门店确认预约和会员资料。</text>
         <template v-if="sessionState.profile.pospal?.state === 'UNLINKED' && !sessionState.profile.pospal.memberSync">
-          <text class="hint">微信验证手机号后可同步门店会员；已有会员由门店核验关联。</text>
-          <button class="secondary-btn" open-type="getPhoneNumber|agreePrivacyAuthorization" :disabled="phoneSaving || avatarSaving || nicknameSaving || !phoneSyncConsent" @getphonenumber="verifyPhoneForSync">{{ phoneSaving ? '保存中...' : '微信验证手机号并同步会员' }}</button>
+          <text class="hint">验证手机号后可同步门店会员；已有会员由门店核验关联。</text>
+          <button class="secondary-btn" open-type="getPhoneNumber|agreePrivacyAuthorization" :disabled="phoneSaving || avatarSaving || nicknameSaving || !phoneSyncConsent" @getphonenumber="verifyPhoneForSync">{{ phoneSaving ? '保存中...' : '验证手机号并同步会员' }}</button>
           <button v-if="!phoneSyncConsent" class="secondary-btn" @click="goHome">返回首页确认最新隐私政策</button>
         </template>
       </view>

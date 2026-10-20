@@ -31,7 +31,7 @@ if (productionEnv.VITE_API_BASE_URL?.replace(/\/$/, '') !== expectedApi) {
 if (!expectedApi || !combined.includes(expectedApi)) {
   errors.push('产物中未找到 release-target.json 配置的正式 API 地址');
 }
-for (const domain of ['moonisle.shop', 'chuy.shop']) {
+for (const domain of ['moonisle.shop', 'www.moonisle.shop', 'chuy.shop']) {
   if (expectedApi && new URL(expectedApi).hostname !== domain && combined.includes(`https://${domain}/api`)) {
     errors.push(`产物仍包含非当前环境的 API 域名：${domain}`);
   }

@@ -90,9 +90,9 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   if (lower.includes('message content is required')) return '请输入留言内容';
   if (lower.includes('wechat phone failed')) {
     if (lower.includes('invalid code') || lower.includes('40029') || lower.includes('40163')) {
-      return '手机号授权已失效，请重新点击微信授权';
+      return '手机号授权已失效，请重新验证';
     }
-    return '微信手机号获取失败，请重新授权或手动填写';
+    return '手机号获取失败，请重新验证或手动填写';
   }
   if (lower.includes('request id already used with different data')) return '留言提交编号已使用，请重新输入后提交';
   if (
@@ -101,7 +101,7 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
     lower.includes('40029') ||
     lower.includes('40163')
   ) {
-    return '微信登录凭证已过期，请重试';
+    return '登录凭证已过期，请重试';
   }
   if (
     lower.includes('invalid appid') ||
@@ -109,7 +109,7 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
     lower.includes('40013') ||
     lower.includes('40125')
   ) {
-    return '微信登录配置异常，请联系门店';
+    return '登录服务配置异常，请联系门店';
   }
   if (
     lower.includes('url not in domain list') ||

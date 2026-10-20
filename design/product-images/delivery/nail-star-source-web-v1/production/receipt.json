@@ -1,0 +1,29 @@
+{
+  "verified_date": "2026-10-19",
+  "product": {
+    "id": "nail-prod-14b1ee46-4082-42a5-84ad-23da6b495fc7",
+    "businessType": "NAIL",
+    "categoryId": "nail-cat-style",
+    "categoryName": "款式设计",
+    "name": "星点法式",
+    "description": "裸粉珠光底色，搭配银白星星、棕铜色小星与浅蓝圆点法式。具体款式细节、服务时长及价格请与门店确认。",
+    "images": [
+      "/uploads/1792394359017-90a5e7b6-9619-45fb-969d-a4097a53f617-feef5474-0140-4545-bc14-d332a5a2e835.jpg"
+    ],
+    "sortOrder": 100,
+    "isActive": true,
+    "createdAt": "2026-10-19T07:19:37.862Z",
+    "updatedAt": "2026-10-19T07:19:37.862Z"
+  },
+  "public_catalog_url": "https://chuy.shop/api/members/catalog/NAIL/products",
+  "public_image_url": "https://chuy.shop/api/uploads/1792394359017-90a5e7b6-9619-45fb-969d-a4097a53f617-feef5474-0140-4545-bc14-d332a5a2e835.jpg",
+  "uploaded_image_bytes": 125332,
+  "uploaded_image_sha256": "281250c4abc76d662d4e458cc7a740b149b9be4769711ee9590f0488b90f0391",
+  "admin_dom_image": {
+    "complete": true,
+    "naturalWidth": 1080,
+    "naturalHeight": 1374
+  },
+  "status": "created-active-image-uploaded-and-publicly-readable",
+  "miniapp_code_release": "not performed in this task"
+}

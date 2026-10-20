@@ -1,0 +1,32 @@
+{
+  "created_date": "2026-10-19",
+  "classification": "Real source photo JPEG delivery copy; not AI redrawn",
+  "source": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/inputs/nail-star-b2bdb426/source.jpg",
+  "source_sha256": "6242e1b995f98dd2a31a8fe6edcb14a321c783aa122f0397d77dea7a880e0d5a",
+  "source_bytes": 440072,
+  "output": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/delivery/nail-star-source-web-v1/display.jpg",
+  "output_sha256": "37f4dacc4d027418b45b5c4b1a8e87b5ebbdc2714e0a5b30d707770405f4a1be",
+  "output_bytes": 186645,
+  "size_reduction_percent": 57.59,
+  "dimensions": [
+    1080,
+    1374
+  ],
+  "encoding": {
+    "tool": "macOS sips",
+    "format": "jpeg",
+    "quality": 85,
+    "resize": false,
+    "lossy_reencoding": true
+  },
+  "product_binding": {
+    "id": "nail-prod-14b1ee46-4082-42a5-84ad-23da6b495fc7",
+    "businessType": "NAIL",
+    "name": "星点法式",
+    "categoryId": "nail-cat-style",
+    "image_url": "https://chuy.shop/api/uploads/1792394359017-90a5e7b6-9619-45fb-969d-a4097a53f617-feef5474-0140-4545-bc14-d332a5a2e835.jpg"
+  },
+  "deployment": "Product and image live; miniapp UI source remains local/unreleased",
+  "source_unchanged": true,
+  "layout": "One images URL works with nail-list and detail aspectFit"
+}

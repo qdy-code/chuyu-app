@@ -1,0 +1,22 @@
+{
+  "reviewer": "Codex image inspection",
+  "verdict": "concept-candidate-with-notes",
+  "approved_for_publication": false,
+  "checks": {
+    "brand_composition": "pass",
+    "subject_details": "fail",
+    "artifacts": "pass",
+    "reference_fidelity": "not-applicable",
+    "crop_usability": "pending"
+  },
+  "observations": [
+    "五枚完整甲片、灰蓝与乳白协调，两枚可见晕染，无额外文字。",
+    "甲形偏椭圆，未精确达到短杏仁形；作为风格候选，后续定款需修改甲形。",
+    "主体在中部横向排列，按702:430容器中央裁切的几何预检可保留；尚未接入小程序。"
+  ],
+  "scope": "Generated image visual inspection; no real product fidelity or mini-program acceptance verified",
+  "actual_dimensions": {
+    "width": 1254,
+    "height": 1254
+  }
+}

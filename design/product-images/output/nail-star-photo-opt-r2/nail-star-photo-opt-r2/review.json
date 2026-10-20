@@ -1,0 +1,22 @@
+{
+  "reviewer": "Codex visual comparison of original, v1 and r2",
+  "verdict": "candidate-only-fidelity-not-passed",
+  "approved_for_publication": false,
+  "checks": {
+    "brand_composition": "pass",
+    "subject_details": "fail",
+    "artifacts": "pass",
+    "reference_fidelity": "fail",
+    "crop_usability": "pending"
+  },
+  "observations": [
+    "背景与环境光符合奶油白/灰蓝品牌方向，手势、四片甲面对应关系与袖口大体保留。",
+    "一次针对性修正未成功去除上方甲面新增的白色小星；甲面珠光仍被重新绘制，局部圆点/饰件不具备像素保真。",
+    "不能作为严格还原原款的最终商品图；仅交付品牌风格优化候选，等待用户反馈。",
+    "未接入小程序或验证列表裁切。"
+  ],
+  "actual_dimensions": {
+    "width": 1254,
+    "height": 1254
+  }
+}

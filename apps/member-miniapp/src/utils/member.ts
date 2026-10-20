@@ -200,7 +200,7 @@ async function resolveReadyMemberAccess(onSetupRequired?: () => void): Promise<b
   const confirmed = await showConfirm({
     title: '需要登录',
     content: '登录后可提交预约、查看会员卡和个人记录。',
-    confirmText: '微信登录',
+    confirmText: '立即登录',
   });
   if (!confirmed) return false;
 
@@ -241,7 +241,7 @@ function isRetriableLoginError(error: unknown): boolean {
     message.includes('登录凭证已过期') ||
     message.includes('网络连接不稳定') ||
     message.includes('服务暂时不可用') ||
-    message.includes('微信登录未启动')
+    message.includes('登录未启动')
   );
 }
 
@@ -315,7 +315,7 @@ function requestLoginCode(): Promise<string> {
           resolve(fallbackCode);
           return;
         }
-        reject(new Error(error.errMsg || '微信登录未启动'));
+        reject(new Error(error.errMsg || '登录未启动'));
       },
     });
   });

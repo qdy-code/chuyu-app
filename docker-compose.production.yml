@@ -92,7 +92,7 @@ services:
       - '80:80'
       - '443:443'
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:-moonisle.shop}
+      APP_DOMAIN: ${APP_DOMAIN:-www.moonisle.shop}
     networks:
       proxy:
         ipv4_address: 172.30.95.2
