@@ -48,6 +48,7 @@ import { onShow } from '@dcloudio/uni-app';
 import type { MemberMessage } from '@member-platform/shared';
 import { createMyMessage, listMyMessages, readableErrorMessage } from '@/utils/api';
 import { requireReadyMember } from '@/utils/member';
+import { isMemberEntryReady } from '@/utils/member-entry';
 import { sessionState } from '@/store/session';
 
 const messages = ref<MemberMessage[]>([]);
@@ -73,6 +74,7 @@ function makeRequestId(): string {
 }
 
 async function refresh() {
+  if (!isMemberEntryReady()) return;
   if (!requireReadyMember()) return;
   const revision = sessionRevision;
   loading.value = true;

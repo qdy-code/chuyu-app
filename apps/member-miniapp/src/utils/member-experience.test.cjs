@@ -80,7 +80,11 @@ function setup(t, overrides = {}, initialProfile = null) {
       if (dependency === '@/store/session') return sessionModule;
       if (dependency === '@/utils/api') return api;
       if (dependency === '@/utils/image-cache') return { resolveImageForDisplay: async (source, fallback) => source || fallback };
-      if (dependency === '@dcloudio/uni-app') return { onShow: (hook) => pageHooks.push(hook), onLoad: (hook) => hooks.set(name + ':load', hook), onUnload: (hook) => hooks.set(name + ':unload', hook) };
+      if (dependency === '@dcloudio/uni-app') return {
+        onShow: (hook) => pageHooks.push(hook),
+        onLoad: (hook) => hooks.set(name + ':load', hook),
+        onUnload: (hook) => hooks.set(name + ':unload', hook),
+      };
       if (dependency.endsWith('.vue')) return {};
       if (dependency.startsWith('@/')) return load(dependency.slice(2) + '.ts');
       throw new Error(`Unexpected dependency: ${dependency}`);
@@ -103,6 +107,90 @@ function authorize(ctx) {
   member.setLegalConsent(true);
   return member;
 }
+
+test('all pages share one public brand card without member data, inherited queries or prompts', (t) => {
+  const ctx = setup(t, {}, { ...linked, nickname: 'PRIVATE_NICKNAME', balance: 98765.43 });
+  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
+  const { pages } = JSON.parse(readFileSync(resolve(__dirname, '../pages.json'), 'utf8'));
+  const input = { from: 'menu', query: 'token=PRIVATE_TOKEN&phone=13999999999&booking=1' };
+  for (const page of pages) {
+    const self = { $scope: { route: page.path }, profile: ctx.session.profile };
+    const friend = memberPageMixin.onShareAppMessage.call(self, input);
+    const timeline = memberPageMixin.onShareTimeline.call(self, input);
+    assert.deepEqual(JSON.parse(JSON.stringify(friend)), {
+      title: '月光石屿 MOONISLE｜美甲 · 饰品 · 鲜花', imageUrl: '/static/brand/share-cover.png', path: '/pages/index/index',
+    });
+    assert.equal(timeline.query, 'entry=share');
+    assert.equal(timeline.imageUrl, '/static/brand/share-cover-square.png');
+    assert.doesNotMatch(JSON.stringify([friend, timeline]), /PRIVATE_|13999999999|13800138000|token-a|VIP-008|98765|booking=/);
+  }
+  assert.equal(ctx.navigation.length, 0);
+  assert.equal(ctx.notices.length, 0);
+  assert.equal(ctx.payloads.length, 0);
+});
+
+test('new visitors enter the existing login page silently and can read both agreements', (t) => {
+  const ctx = setup(t);
+  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
+  const { pages } = JSON.parse(readFileSync(resolve(__dirname, '../pages.json'), 'utf8'));
+  for (const page of pages) {
+    const before = ctx.navigation.length;
+    memberPageMixin.onShow.call({ $scope: { route: page.path } });
+    assert.equal(ctx.navigation.length - before, ['pages/index/index', 'pages/legal/privacy', 'pages/legal/terms'].includes(page.path) ? 0 : 1);
+  }
+  assert.ok(ctx.navigation.every(path => path === '/pages/index/index'));
+  assert.equal(ctx.notices.length, 0);
+  assert.equal(ctx.session.userId, '');
+  assert.equal(ctx.payloads.length, 0);
+});
+
+test('phone setup and consent must be completed before entering other pages; returning members proceed', (t) => {
+  const ctx = setup(t, {}, { ...linked, phone: undefined });
+  const { memberPageMixin, isMemberEntryReady } = ctx.load('utils/member-entry.ts');
+  const self = { $scope: { route: 'pages/nail/nail' } };
+  assert.equal(isMemberEntryReady(), false);
+  memberPageMixin.onShow.call(self);
+  assert.equal(ctx.navigation.length, 1);
+  ctx.session.profile.phone = linked.phone;
+  memberPageMixin.onShow.call(self);
+  assert.equal(ctx.navigation.length, 2);
+  authorize(ctx);
+  assert.equal(isMemberEntryReady(), true);
+  memberPageMixin.onShow.call(self);
+  assert.equal(ctx.navigation.length, 2);
+  ctx.session.token = '';
+  memberPageMixin.onShow.call(self);
+  assert.equal(ctx.navigation.length, 3);
+  assert.equal(ctx.notices.length, 0);
+});
+
+test('timeline links open member entry and never adopt sender identity or original page params', (t) => {
+  const ctx = setup(t, {}, linked); authorize(ctx);
+  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
+  memberPageMixin.onLoad.call({ $scope: { route: 'pages/consumptions/consumptions' } }, { entry: 'share', memberId: 'PRIVATE_SENDER', token: 'PRIVATE_SENDER_TOKEN' });
+  assert.equal(ctx.navigation.at(-1), '/pages/index/index');
+  assert.equal(ctx.session.userId, linked.id);
+  assert.equal(ctx.session.token, 'token-a');
+  const before = ctx.navigation.length;
+  memberPageMixin.onLoad.call({ $scope: { route: 'pages/index/index' } }, { entry: 'share' });
+  memberPageMixin.onLoad.call({ $scope: { route: 'pages/nail/nail' } }, {});
+  assert.equal(ctx.navigation.length, before);
+  assert.equal(ctx.notices.length, 0);
+});
+
+test('entry redirects are deduplicated during page loading and recover after navigation completes', (t) => {
+  const ctx = setup(t);
+  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
+  const self = { $scope: { route: 'pages/nail/nail' } };
+  const navigations = [];
+  ctx.uni.switchTab = options => navigations.push(options);
+  memberPageMixin.onLoad.call(self, { entry: 'share' });
+  memberPageMixin.onShow.call(self);
+  assert.equal(navigations.length, 1);
+  navigations[0].complete();
+  memberPageMixin.onShow.call(self);
+  assert.equal(navigations.length, 2);
+});
 
 test('favorites persist by member and business, survive a fresh module, and may be removed', (t) => {
   const ctx = setup(t, {}, linked);
