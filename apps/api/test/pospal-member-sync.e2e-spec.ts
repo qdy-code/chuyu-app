@@ -131,6 +131,17 @@ describe('Durable member registration sync (isolated PostgreSQL, simulated Pospa
     await request(app.getHttpServer()).get('/admin/pospal/member-sync').set('Authorization', `Bearer ${signToken('admin-001', 'admin')}`).expect(200);
   });
 
+  it('stops automatic retries for unsupported characters and shows a safe actionable error without changing the profile', async () => {
+    const member = await register();
+    const before = await prisma.member.findUniqueOrThrow({ where: { id: member.id } });
+    client.createMember.mockRejectedValueOnce(new BadGatewayException('银豹不支持会员资料中的部分特殊字符，请求编号 safe-test-id'));
+    await worker.processNext();
+    expect(await prisma.pospalMemberSync.findUnique({ where: { memberId: member.id } })).toMatchObject({ state: 'FAILED', attempts: 1, lastError: expect.stringContaining('特殊字符') });
+    await worker.processNext(); expect(client.createMember).toHaveBeenCalledTimes(1);
+    expect(await prisma.member.findUniqueOrThrow({ where: { id: member.id } })).toEqual(before);
+    expect(await prisma.pospalMemberLink.findUnique({ where: { memberId: member.id } })).toBeNull();
+  });
+
   it('stops retries and opens a circuit for account service suspension while registration still succeeds', async () => {
     const member = await register();
     client.findMemberByNumber.mockRejectedValueOnce(new BadGatewayException('银豹 Token 余额不足或正式服务已暂停'));

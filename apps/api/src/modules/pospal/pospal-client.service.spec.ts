@@ -60,6 +60,32 @@ describe('PospalClientService', () => {
     expect(String(error)).not.toContain('sensitive member');
   });
 
+  it('normalizes only outgoing POS labels and keeps Chinese names and original profile input intact', async () => {
+    process.env.POSPAL_MEMBER_SYNC_ENABLED = 'true';
+    const original = '小美🧸 e\u0301';
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'success', errorCode: 0, result: { uid: '123', number: 'TEST-1', tel: '13988889999' } })));
+    await client.createMember('TEST-1', '13988889999', original);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.name).toBe('小美 é'); expect(body.customerExt.nickName).toBe('小美 é');
+    expect(body.point).toBe(0); expect(body.credit).toBe(0); expect(original).toBe('小美🧸 e\u0301');
+  });
+
+  it('uses a safe fallback for emoji-only names and never alters cashier name or financial fields during nickname updates', async () => {
+    process.env.POSPAL_MEMBER_SYNC_ENABLED = 'true';
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'success', errorCode: 0, result: {} })));
+    await client.updateMemberNickname('123', '🧸');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.updateMask).toEqual(['customerExt.nickName']); expect(body.customerExt.nickName).toBe('月光会员');
+    expect(body.name).toBeUndefined(); expect(body.point).toBeUndefined(); expect(body.credit).toBeUndefined();
+  });
+
+  it('reports encoding errors without disclosing the upstream SQL, credentials or customer details', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'error', errorCode: -1, messages: ['SQL Incorrect string value: test-key sensitive-member-phone for name'] })));
+    const error = await client.checkConnection().catch(failure => failure);
+    expect(error.message).toContain('不支持会员资料中的部分特殊字符');
+    expect(error.message).not.toMatch(/SQL|test-key|sensitive-member-phone/);
+  });
+
   it('rejects HTTP failure, non-JSON and malformed pagination', async () => {
     fetchMock.mockResolvedValueOnce(new Response('failure', { status: 503 }));
     await expect(client.checkConnection()).rejects.toBeInstanceOf(BadGatewayException);

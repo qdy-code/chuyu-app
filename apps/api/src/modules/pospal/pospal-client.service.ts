@@ -27,6 +27,12 @@ function amount(value: unknown): number {
   return parsed;
 }
 
+// Some POS customer columns reject four-byte Unicode. Keep the original
+// mini-program profile intact and normalize only the outgoing POS label.
+function pospalNickname(value: string): string {
+  return value.normalize('NFC').replace(/[\uD800-\uDFFF\u0000-\u001F\u007F-\u009F]/g, '').trim().slice(0, 64) || '月光会员';
+}
+
 function businessDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) throw new BadGatewayException('银豹记录时间格式无效');
   const date = new Date(`${value.replace(' ', 'T')}+08:00`);
@@ -181,9 +187,10 @@ export class PospalClientService {
   async createMember(number: string, phone: string, nickname: string) {
     this.assertMemberWrites();
     if (!/^[A-Za-z0-9-]{1,32}$/.test(number) || !/^1\d{10}$/.test(phone)) throw new ServiceUnavailableException('银豹开户资料格式无效');
+    const compatibleName = pospalNickname(nickname);
     const { result } = await this.request('/openapi/v3/customer/add', {
-      number, tel: phone, validateTelUnique: true, name: nickname.slice(0, 64),
-      customerExt: { nickName: nickname.slice(0, 64) }, point: 0, discount: 100, credit: 0, enable: 1,
+      number, tel: phone, validateTelUnique: true, name: compatibleName,
+      customerExt: { nickName: compatibleName }, point: 0, discount: 100, credit: 0, enable: 1,
     });
     if (result.number !== number || result.tel !== phone) throw new BadGatewayException('银豹开户结果与请求不符');
     return identifier(result.uid);
@@ -193,7 +200,7 @@ export class PospalClientService {
     this.assertMemberWrites();
     identifier(uid);
     // 只同步小程序昵称，不覆盖收银员维护的姓名、等级、折扣或资金。
-    await this.request('/openapi/v3/customer/update', { uid, updateMask: ['customerExt.nickName'], customerExt: { nickName: nickname.slice(0, 64) } });
+    await this.request('/openapi/v3/customer/update', { uid, updateMask: ['customerExt.nickName'], customerExt: { nickName: pospalNickname(nickname) } });
   }
 
   private assertMemberWrites() {
@@ -237,7 +244,12 @@ export class PospalClientService {
       if (!isRecord(data)) throw new BadGatewayException('银豹响应格式无效');
       if (data.status !== 'success' || data.errorCode !== 0) {
         const code = typeof data.errorCode === 'number' && Number.isSafeInteger(data.errorCode) ? data.errorCode : 'unknown';
-        const message = code === 4021 ? '银豹 Token 余额不足或正式服务已暂停' : `银豹业务请求失败（${code}）`;
+        // Classify a known failure without exposing upstream SQL, credentials
+        // or echoed customer information in the API response or task list.
+        const encodingError = /incorrect string value|invalid utf|character set|字符集|\b1366\b/i.test(JSON.stringify(data.messages ?? data.message ?? ''));
+        const message = code === 4021 ? '银豹 Token 余额不足或正式服务已暂停'
+          : encodingError ? '银豹不支持会员资料中的部分特殊字符'
+          : `银豹业务请求失败（${code}）`;
         // 不转发上游 messages，防止上游错误回显密钥、签名或会员资料。
         throw new BadGatewayException(`${message}，请求编号 ${requestId}`);
       }

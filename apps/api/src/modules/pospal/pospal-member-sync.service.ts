@@ -109,8 +109,11 @@ export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
       } catch (error) {
         const serviceBlocked = error instanceof BadGatewayException && error.message.includes('Token 余额不足');
         if (serviceBlocked) this.blockedUntil = Date.now() + 15 * 60_000;
-        finalState = serviceBlocked || job.attempts >= 3 ? 'FAILED' : 'PENDING';
-        message = serviceBlocked ? '银豹 Token 余额不足或服务暂停；恢复后请重试' : '银豹同步未完成，请稍后重试或联系门店核对';
+        const unsupportedCharacters = error instanceof BadGatewayException && error.message.startsWith('银豹不支持会员资料中的部分特殊字符');
+        finalState = serviceBlocked || unsupportedCharacters || job.attempts >= 3 ? 'FAILED' : 'PENDING';
+        message = serviceBlocked ? '银豹 Token 余额不足或服务暂停；恢复后请重试'
+          : unsupportedCharacters ? '银豹不支持会员资料中的部分特殊字符，请联系门店处理后重试'
+          : '银豹同步未完成，请稍后重试或联系门店核对';
       }
       await this.prisma.$transaction(async tx => {
         const current = await tx.pospalMemberSync.findUnique({ where: { memberId: job.memberId } });
