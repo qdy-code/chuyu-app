@@ -12,6 +12,7 @@ export interface WechatLoginRequest {
 }
 
 export interface LoginResponse {
+  loginMethod?: 'wechat' | 'password';
   token: string;
   user: MemberProfile;
 }
@@ -96,6 +97,11 @@ export interface UpdateMemberRequest {
 export interface MemberLinkCode {
   code: string;
   expiresAt: string;
+}
+
+export interface MemberPhoneRecovery extends MemberLinkCode {
+  mode: 'SELF_SERVICE' | 'STORE_REVIEW';
+  maskedPhone: string;
 }
 
 export interface MemberMessage {

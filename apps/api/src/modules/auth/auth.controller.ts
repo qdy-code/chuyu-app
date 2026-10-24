@@ -5,7 +5,8 @@ import { LoginResponse } from '@member-platform/shared';
 import { DataStoreService } from '../../store/data-store.service';
 import { WechatMiniappService } from '../wechat/wechat-miniapp.service';
 import { signToken } from '../../common/token';
-import { AdminLoginDto, WechatLoginDto } from './dto';
+import { AdminLoginDto, MemberPasswordLoginDto, WechatLoginDto } from './dto';
+import { MemberPasswordService } from './member-password.service';
 import { PospalService } from '../pospal/pospal.service';
 
 const ADMIN_LOGIN_LIMIT = 5;
@@ -18,6 +19,7 @@ export class AuthController {
     private readonly store: DataStoreService,
     private readonly wechatMiniapp: WechatMiniappService,
     private readonly pospal: PospalService,
+    private readonly memberPassword: MemberPasswordService,
   ) {}
 
   @Post('wechat/login')
@@ -28,8 +30,18 @@ export class AuthController {
       openIdHint: openId,
     });
     return {
-      token: signToken(user.id, 'member'),
+      token: signToken(user.id, 'member', undefined, await this.store.getMemberAuthVersion(user.id, openId)),
       user: await this.pospal.cachedAccountProfile(user.id),
+    };
+  }
+
+  @Post('member/password-login')
+  async memberPasswordLogin(@Req() request: Request, @Body() payload: MemberPasswordLoginDto): Promise<LoginResponse> {
+    const identity = await this.memberPassword.authenticate(payload.username.toLowerCase(), payload.password, request.ip || request.socket.remoteAddress || 'unknown');
+    return {
+      token: signToken(identity.memberId, 'member', 86400, identity.authVersion, 'password'),
+      user: await this.pospal.cachedAccountProfile(identity.memberId),
+      loginMethod: 'password',
     };
   }
 

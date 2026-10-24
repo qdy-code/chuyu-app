@@ -9,7 +9,7 @@ import { clearSession, restoreSession, sessionState, setLoginSession, setProfile
 import type { RechargeStatus } from '@member-platform/shared';
 import { reactive, watch } from 'vue';
 
-export const LEGAL_CONSENT_VERSION = '2026-10-12-member-sync';
+export const LEGAL_CONSENT_VERSION = '2026-10-23-member-password';
 const LEGAL_CONSENT_STORAGE_KEY = 'member-miniapp-legal-consent';
 let memberAccessInFlight: Promise<boolean> | null = null;
 export const profileRefreshState = reactive({ loading: false, fresh: false, errorMessage: '' });
@@ -33,6 +33,10 @@ watch(() => [sessionState.userId, sessionState.token], () => {
 
 export function hasLegalConsent(): boolean {
   return uni.getStorageSync(LEGAL_CONSENT_STORAGE_KEY) === LEGAL_CONSENT_VERSION;
+}
+
+export function isMemberEntryReady(): boolean {
+  return !!(sessionState.token && sessionState.userId && (sessionState.profile?.phone || sessionState.loginMethod === 'password') && hasLegalConsent());
 }
 
 export function setLegalConsent(accepted: boolean): void {
@@ -116,16 +120,6 @@ export async function loadSessionProfile(force = false): Promise<boolean> {
   return task;
 }
 
-export async function ensureSession(): Promise<boolean> {
-  const restored = await loadSessionProfile();
-  if (restored) return true;
-  await loginWithWechat();
-  if (!sessionState.userId) {
-    throw new Error('登录未完成');
-  }
-  return true;
-}
-
 export async function loginWithWechat(): Promise<void> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -172,7 +166,7 @@ export function requireReadyMember(): boolean {
   if (!requireLogin()) {
     return false;
   }
-  if (!sessionState.profile?.phone) {
+  if (!sessionState.profile?.phone && sessionState.loginMethod !== 'password') {
     void promptPhoneSetup();
     return false;
   }
@@ -185,7 +179,7 @@ export function requireRegistered(): boolean {
 
 async function resolveReadyMemberAccess(onSetupRequired?: () => void): Promise<boolean> {
   if (await loadSessionProfile()) {
-    if (!sessionState.profile?.phone) {
+    if (!sessionState.profile?.phone && sessionState.loginMethod !== 'password') {
       await promptPhoneSetup(onSetupRequired);
       return false;
     }
@@ -204,35 +198,11 @@ async function resolveReadyMemberAccess(onSetupRequired?: () => void): Promise<b
   });
   if (!confirmed) return false;
 
-  if (!hasLegalConsent()) {
-    const goToConsent = await showConfirm({
-      title: '请先确认服务条款',
-      content: '首次登录前，请在“我的”页面阅读并同意用户协议与隐私政策。',
-      confirmText: '去查看',
-    });
-    if (goToConsent) {
-      onSetupRequired?.();
-      uni.switchTab({ url: '/pages/index/index' });
-    }
-    return false;
-  }
-
-  uni.showLoading({ title: '登录中', mask: true });
-  try {
-    await loginWithWechat();
-  } catch (error) {
-    uni.hideLoading();
-    await showNotice('登录失败', readableErrorMessage(error, '登录未完成'));
-    return false;
-  }
-  uni.hideLoading();
-
-  if (!sessionState.profile?.phone) {
-    await promptPhoneSetup(onSetupRequired);
-    return false;
-  }
-  uni.showToast({ title: '登录成功', icon: 'success' });
-  return true;
+  // Phone authorization needs a direct button tap; let the member page perform
+  // WeChat authentication and phone binding together after that authorization.
+  onSetupRequired?.();
+  uni.switchTab({ url: '/pages/index/index' });
+  return false;
 }
 
 function isRetriableLoginError(error: unknown): boolean {
@@ -247,9 +217,9 @@ function isRetriableLoginError(error: unknown): boolean {
 
 async function promptPhoneSetup(onSetupRequired?: () => void): Promise<void> {
   const confirmed = await showConfirm({
-    title: '完善手机号',
-    content: '首次使用请先授权或填写手机号，方便门店确认预约。',
-    confirmText: '去填写',
+    title: '手机号授权登录',
+    content: '提交预约或关联门店会员需要手机号，方便门店核对和联系。浏览作品无需提供手机号。',
+    confirmText: '去登录',
   });
   if (confirmed) {
     onSetupRequired?.();
@@ -264,18 +234,6 @@ function showConfirm(options: { title: string; content: string; confirmText: str
       cancelText: '稍后',
       success: (result) => resolve(Boolean(result.confirm)),
       fail: () => resolve(false),
-    });
-  });
-}
-
-function showNotice(title: string, content: string): Promise<void> {
-  return new Promise((resolve) => {
-    uni.showModal({
-      title,
-      content,
-      showCancel: false,
-      confirmText: '知道了',
-      complete: () => resolve(),
     });
   });
 }

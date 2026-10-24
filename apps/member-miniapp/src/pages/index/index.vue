@@ -28,9 +28,22 @@
           <text class="legal-link" @click.stop="openPrivacy">《隐私政策》</text>
         </view>
       </view>
-      <button class="primary-btn" :disabled="loggingIn || !legalAccepted" @click="handleEnter">
-        {{ loggingIn ? '登录中...' : '登录' }}
+      <button
+        class="primary-btn phone-login"
+        open-type="getPhoneNumber|agreePrivacyAuthorization"
+        :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted"
+        @getphonenumber="handleWechatPhone"
+      >
+        {{ savingPhone ? '登录中...' : '手机号授权登录' }}
       </button>
+      <button class="link-refresh password-entry" :disabled="loggingIn || savingPhone || linkBusy" @click="showPasswordLogin = !showPasswordLogin">账号密码登录</button>
+      <view v-if="showPasswordLogin" class="password-form">
+        <input v-model="loginUsername" class="phone-input" maxlength="32" placeholder="请输入账号" :disabled="loggingIn || savingPhone || linkBusy" />
+        <input v-model="loginPassword" class="phone-input" password maxlength="128" placeholder="请输入密码" :disabled="loggingIn || savingPhone || linkBusy" @confirm="handlePasswordLogin" />
+        <text v-if="passwordError" class="password-error">{{ passwordError }}</text>
+        <button class="primary-btn" :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted" @click="handlePasswordLogin">{{ loggingIn ? '登录中...' : '登录账户' }}</button>
+      </view>
+      <button class="link-refresh" @click="browseCatalog">先浏览作品</button>
     </view>
 
     <view v-else-if="!legalAccepted" class="entry-card">
@@ -45,20 +58,36 @@
         </view>
       </view>
       <button class="primary-btn" @click="acceptLegalTerms">同意并继续</button>
+      <button class="link-refresh" @click="browseCatalog">先浏览作品</button>
     </view>
 
     <view v-else-if="needsPhoneSetup" class="entry-card">
       <text class="entry-kicker">首次使用</text>
-      <text class="entry-title">手机号快捷登录</text>
+      <text class="entry-title">手机号授权登录</text>
       <text class="entry-desc">用于门店会员核对和预约联系。</text>
       <button
-        class="primary-btn"
+        class="primary-btn phone-login"
         open-type="getPhoneNumber|agreePrivacyAuthorization"
-        :disabled="savingPhone || linkBusy"
+        :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted"
         @getphonenumber="handleWechatPhone"
       >
-        {{ savingPhone ? '保存中...' : '一键验证手机号' }}
+        {{ savingPhone ? '登录中...' : '手机号授权登录' }}
       </button>
+      <view v-if="phoneRecovery" class="member-link">
+        <text class="entry-title">手机号已有会员</text>
+        <text class="entry-desc">已通过微信验证 {{ phoneRecovery.maskedPhone }}。</text>
+        <template v-if="phoneRecovery.mode === 'SELF_SERVICE'">
+          <text class="entry-desc">原账号没有余额、积分、业务记录或银豹关联。确认后将恢复原会员号，并更换为当前微信登录；原微信登录将失效。</text>
+          <button class="primary-btn" :disabled="savingPhone || linkBusy" @click="confirmRecovery">确认找回并登录</button>
+        </template>
+        <template v-else>
+          <text class="entry-desc">原会员资料需要门店核验。余额、积分和历史记录均保留在原会员，不会自动合并或覆盖。</text>
+          <text class="link-code" selectable>{{ phoneRecovery.code }}</text>
+          <text class="entry-desc">请仅向门店工作人员出示关联码，5 分钟内有效。门店核对身份后更换微信绑定。</text>
+          <button class="primary-btn" :disabled="savingPhone || linkBusy" @click="refreshLinkedMember">门店已确认，重新登录</button>
+        </template>
+        <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="clearPhoneRecovery">取消关联</button>
+      </view>
       <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="showManualPhone = !showManualPhone">
         {{ showManualPhone ? '收起手动填写' : '手动填写手机号' }}
       </button>
@@ -75,13 +104,8 @@
       <button v-if="showManualPhone" class="primary-btn" :disabled="savingPhone || linkBusy" @click="submitPhone">
         {{ savingPhone ? '保存中...' : '完成并进入' }}
       </button>
-      <view v-if="linkCode" class="member-link">
-        <text class="field-label">等待门店核验</text>
-        <text class="link-code" selectable>{{ linkCode.code }}</text>
-        <text class="entry-desc">关联码 {{ linkExpiresText }} 失效，仅向门店工作人员出示。</text>
-        <button class="primary-btn" :disabled="linkBusy" @click="refreshLinkedMember">{{ linkBusy ? '查询中...' : '门店已确认，刷新资料' }}</button>
-        <button class="link-refresh" :disabled="linkBusy" @click="linkExistingMember">重新生成关联码</button>
-      </view>
+      <button class="link-refresh password-entry" :disabled="savingPhone || linkBusy" @click="switchToPasswordLogin">账号密码登录</button>
+      <button class="link-refresh" @click="browseCatalog">先浏览作品</button>
     </view>
 
     <template v-else>
@@ -144,7 +168,7 @@
         </view>
       </view>
       <view v-if="needsProfileSetup" class="profile-tip" @click="openProfileSetup">
-        <text>头像和昵称可稍后完善</text><text>去完善 ›</text>
+        <text>头像与昵称可自行修改</text><text>去修改 ›</text>
       </view>
     </template>
   </view>
@@ -158,13 +182,13 @@ import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
 import { memberNumber } from '@/utils/member-display';
 import { resumePendingBooking } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
-import { sessionState, setProfile } from '@/store/session';
-import { bindWechatPhone, createMemberLinkCode, listMyAppointments, readableErrorMessage, updateMyProfile } from '@/utils/api';
-import type { Appointment, BusinessType, MemberLinkCode } from '@member-platform/shared';
+import { sessionState, setProfile, setLoginSession, clearSession } from '@/store/session';
+import { beginPhoneRecovery, clearPhoneRecovery, phoneRecoveryState } from '@/utils/phone-recovery';
+import { bindWechatPhone, confirmPhoneRecovery, listMyAppointments, memberPasswordLogin, readableErrorMessage, updateMyProfile } from '@/utils/api';
+import type { Appointment, BusinessType } from '@member-platform/shared';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
   discountText,
-  ensureSession,
   formatMoney,
   hasLegalConsent,
   loadSessionProfile,
@@ -173,11 +197,14 @@ import {
   loginWithWechat,
 } from '@/utils/member';
 
+const phoneRecovery = computed(() => phoneRecoveryState.userId === sessionState.userId ? phoneRecoveryState.challenge : null);
 const loggingIn = ref(false);
+const showPasswordLogin = ref(false);
+const loginUsername = ref('');
+const loginPassword = ref('');
+const passwordError = ref('');
 const savingPhone = ref(false);
 const linkBusy = ref(false);
-const linkCode = ref<MemberLinkCode | null>(null);
-const linkExpiresText = computed(() => linkCode.value ? new Date(linkCode.value.expiresAt).toTimeString().slice(0, 5) : '');
 const phoneInput = ref('');
 const showManualPhone = ref(false);
 const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
@@ -217,7 +244,7 @@ const welcomeText = computed(() => {
   const nickname = sessionState.profile?.nickname;
   return nickname && nickname !== '微信用户' ? nickname : sessionState.userId ? '欢迎来到月光石屿' : '我的';
 });
-const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone));
+const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone && sessionState.loginMethod !== 'password'));
 const needsProfileSetup = computed(() => Boolean(sessionState.profile &&
   (!sessionState.profile.avatarUrl || sessionState.profile.nickname === '微信用户')));
 
@@ -225,24 +252,35 @@ function openProfileSetup() {
   uni.navigateTo({ url: '/pages/account/account?setup=1' });
 }
 
-async function handleEnter() {
-  if (loggingIn.value) return;
-  if (!legalAccepted.value) {
-    uni.showToast({ title: '请先阅读并同意协议', icon: 'none' });
-    return;
-  }
+function browseCatalog() {
+  uni.switchTab({ url: '/pages/nail/nail' });
+}
+
+function switchToPasswordLogin() {
+  clearSession();
+  clearPhoneRecovery();
+  showPasswordLogin.value = true;
+  passwordError.value = '';
+  loginPassword.value = '';
+}
+
+async function handlePasswordLogin() {
+  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
+  passwordError.value = '';
+  if (!legalAccepted.value) { passwordError.value = '请先阅读并同意协议'; return; }
+  const username = loginUsername.value.trim();
+  if (!/^[a-zA-Z0-9_]{4,32}$/.test(username) || !loginPassword.value) { passwordError.value = '请填写正确的账号和密码'; return; }
   loggingIn.value = true;
   try {
-    await ensureSession();
-    phoneInput.value = sessionState.profile?.phone || '';
+    const response = await memberPasswordLogin(username, loginPassword.value);
+    setLoginSession(response);
+    showPasswordLogin.value = false;
+    loginUsername.value = '';
     void loadNextAppointment();
     resumePendingBooking();
   } catch (error) {
-    console.error('[member login failed]', error);
-    uni.showToast({ title: readableErrorMessage(error, '登录未完成').slice(0, 18), icon: 'none' });
-  } finally {
-    loggingIn.value = false;
-  }
+    passwordError.value = readableErrorMessage(error, '登录未完成');
+  } finally { loginPassword.value = ''; loggingIn.value = false; }
 }
 
 function handleLegalConsentChange(event: { detail: { value: string[] } }) {
@@ -258,36 +296,64 @@ function acceptLegalTerms() {
 }
 
 function completeEntry() {
-  if (resumePendingBooking()) return;
-  if (needsProfileSetup.value) openProfileSetup();
+  resumePendingBooking();
 }
 
 async function handleWechatPhone(event: { detail: { code?: string; errMsg?: string; errno?: number } }) {
-  if (savingPhone.value || linkBusy.value) return;
+  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
+  if (!legalAccepted.value || !hasLegalConsent()) {
+    uni.showToast({ title: '请先阅读并同意协议', icon: 'none' });
+    return;
+  }
   const { code, errMsg = '', errno } = event.detail;
   if (!code) {
-    showManualPhone.value = true;
+    showManualPhone.value = Boolean(sessionState.userId);
     const content = /deny|cancel/i.test(errMsg)
-      ? '你暂未授权手机号，可以手动填写，或稍后再次授权。'
+      ? '你暂未授权手机号，可稍后重试，或使用下方账号密码登录。浏览作品无需登录。'
       : errno === 1400001
-        ? '手机号验证暂不可用，可以手动填写或联系门店。'
-        : '手机号授权未完成，可以重新授权或手动填写。';
-    uni.showModal({ title: '手机号授权', content, showCancel: false });
+        ? '手机号授权暂不可用，请稍后重试或使用账号密码登录。'
+        : '手机号授权未完成，请重新授权或使用账号密码登录。';
+    uni.showModal({ title: '手机号授权登录', content, showCancel: false });
     return;
   }
   savingPhone.value = true;
   try {
+    // Authenticate the current WeChat identity before using the one-time phone
+    // code. Never reuse a cached password/other-member session for phone binding.
+    await loginWithWechat();
     const profile = await bindWechatPhone(code);
     setProfile(profile);
     phoneInput.value = profile.phone || '';
-    uni.showToast({ title: '手机号已保存', icon: 'success' });
+    showManualPhone.value = false;
+    clearPhoneRecovery();
+    uni.showToast({ title: '登录成功', icon: 'success' });
+    void loadNextAppointment();
     completeEntry();
   } catch (error) {
-    showManualPhone.value = true;
-    uni.showModal({ title: '手机号未保存', content: readableErrorMessage(error, '授权失败，请重新授权或手动填写'), showCancel: false });
+    if (beginPhoneRecovery(error)) { showManualPhone.value = false; return; }
+    showManualPhone.value = Boolean(sessionState.userId);
+    uni.showModal({ title: '登录未完成', content: readableErrorMessage(error, '请重新点击手机号授权登录后重试'), showCancel: false });
   } finally {
     savingPhone.value = false;
   }
+}
+
+async function confirmRecovery() {
+  const challenge = phoneRecovery.value;
+  if (!challenge || challenge.mode !== 'SELF_SERVICE' || savingPhone.value || linkBusy.value) return;
+  savingPhone.value = true;
+  try {
+    const response = await confirmPhoneRecovery(challenge.code);
+    setLoginSession(response);
+    clearPhoneRecovery();
+    phoneInput.value = response.user.phone || '';
+    uni.showToast({ title: '已找回原会员', icon: 'success' });
+    void loadNextAppointment();
+    completeEntry();
+  } catch (error) {
+    clearPhoneRecovery();
+    uni.showModal({ title: '找回未完成', content: readableErrorMessage(error, '请重新微信验证手机号，或联系门店核验'), showCancel: false });
+  } finally { savingPhone.value = false; }
 }
 
 async function submitPhone() {
@@ -308,10 +374,10 @@ async function submitPhone() {
     if (message.includes('手机号已被其他会员使用')) {
       uni.showModal({
         title: '手机号已使用',
-        content: message,
-        confirmText: '关联老会员',
+        content: '该手机号已有会员。手动填写不能证明手机号归属，请使用上方手机号授权登录，再选择找回或到店核验关联。',
+        confirmText: '去微信验证',
         cancelText: '稍后处理',
-        success: (result) => { if (result.confirm) void linkExistingMember(); },
+        success: (result) => { if (result.confirm) { showManualPhone.value = false; clearPhoneRecovery(); } },
       });
     } else {
       uni.showToast({ title: message.slice(0, 18), icon: 'none' });
@@ -321,26 +387,15 @@ async function submitPhone() {
   }
 }
 
-async function linkExistingMember() {
-  if (linkBusy.value) return;
-  linkBusy.value = true;
-  try {
-    linkCode.value = await createMemberLinkCode(phoneInput.value.trim());
-  } catch (error) {
-    uni.showModal({ title: '暂时无法关联', content: readableErrorMessage(error), showCancel: false });
-  } finally {
-    linkBusy.value = false;
-  }
-}
-
 async function refreshLinkedMember() {
   if (linkBusy.value) return;
   linkBusy.value = true;
   try {
     await loginWithWechat();
     if (sessionState.profile?.phone) {
-      linkCode.value = null;
+      clearPhoneRecovery();
       uni.showToast({ title: '已关联会员', icon: 'success' });
+      void loadNextAppointment();
       resumePendingBooking();
     } else {
       uni.showToast({ title: '等待门店确认', icon: 'none' });
@@ -358,8 +413,9 @@ function openPage(url: string) {
 }
 
 async function openAccountFromHeader() {
+  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
   if (!sessionState.userId) {
-    await handleEnter();
+    uni.showToast({ title: '请点击手机号授权登录', icon: 'none' });
     return;
   }
   if (!requireReadyMember()) return;
@@ -376,8 +432,7 @@ function openTerms() {
 
 onShow(async () => {
   legalAccepted.value = hasLegalConsent();
-  if (linkCode.value && legalAccepted.value) await refreshLinkedMember();
-  else await loadSessionProfile();
+  await loadSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
   if (resumePendingBooking()) return;
   void loadNextAppointment();
@@ -389,6 +444,9 @@ onShow(async () => {
 </script>
 
 <style scoped>
+.password-form { display: grid; gap: 20rpx; margin-top: 16rpx; }
+.password-form .phone-input { box-sizing: border-box; width: 100%; height: 96rpx; padding: 20rpx 24rpx; border-radius: 16rpx; background: #f7f4ef; font-size: 28rpx; font-weight: 400; }
+.password-error { color: #a33e3e; font-size: 24rpx; line-height: 1.6; }
 .page {
   position: relative;
   min-height: 100vh;

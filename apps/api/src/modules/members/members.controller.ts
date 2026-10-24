@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Headers,
   NotFoundException,
   Param,
@@ -25,11 +26,13 @@ import {
   BusinessType,
   CatalogProduct,
   MemberProfile,
+  LoginResponse,
   ProductCategory,
 } from '@member-platform/shared';
 import { DataStoreService } from '../../store/data-store.service';
 import { WechatMiniappService } from '../wechat/wechat-miniapp.service';
-import { BindWechatPhoneDto, CreateAppointmentDto, CreateMemberLinkCodeDto, CreateMemberMessageDto, UpdateMyProfileDto } from './dto';
+import { BindWechatPhoneDto, ConfirmPhoneRecoveryDto, CreateAppointmentDto, CreateMemberLinkCodeDto, CreateMemberMessageDto, UpdateMyProfileDto } from './dto';
+import { signToken } from '../../common/token';
 import { getUploadDir } from '../../config/upload-path';
 import { PospalService } from '../pospal/pospal.service';
 import { usesPospalAccounts } from '../pospal/account-source';
@@ -149,6 +152,10 @@ export class MembersController {
       if (result.reason === 'member not found') {
         throw new NotFoundException(result.reason);
       }
+      if (result.reason === 'phone already bound by another member' && process.env.MINIAPP_LOGIN_MODE === 'real') {
+        const recovery = await this.store.preparePhoneRecovery(userId, phone);
+        throw new HttpException({ message: '该手机号已有会员，请选择找回或到店核验关联', phoneRecovery: recovery }, 409);
+      }
       throw new BadRequestException(result.reason || 'failed to bind phone');
     }
     return this.pospal.cachedAccountProfile(userId);
@@ -161,6 +168,15 @@ export class MembersController {
     @Body() payload: BindWechatPhoneDto,
   ): Promise<MemberProfile> {
     return this.bindWechatPhone(userId, payload);
+  }
+
+  @Post('me/phone-recovery/confirm')
+  async confirmPhoneRecovery(@Headers('x-user-id') userId: string, @Body() payload: ConfirmPhoneRecoveryDto): Promise<LoginResponse> {
+    const result = await this.store.confirmPhoneRecovery(userId, payload.code);
+    return {
+      token: signToken(result.member.id, 'member', undefined, result.authVersion),
+      user: await this.pospal.cachedAccountProfile(result.member.id),
+    };
   }
 
   @Get('me/appointments')

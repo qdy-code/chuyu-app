@@ -28,6 +28,7 @@ import {
   CreateProductTypeRequest,
   MemberLevel,
   MemberProfile,
+  MemberPhoneRecovery,
   MemberMessage,
   MemberLinkCode,
   PointsLedgerEntry,
@@ -60,6 +61,7 @@ type DbMember = {
   id: string;
   openId: string;
   phone: string | null;
+  authVersion?: number;
   nickname: string;
   remark: string | null;
   avatarUrl: string;
@@ -235,6 +237,7 @@ export class DataStoreService {
       await tx.pospalMemberSync.deleteMany();
       await tx.pospalMemberLink.deleteMany();
       await tx.memberLinkRequest.deleteMany();
+      await tx.memberCredential.deleteMany();
       await tx.mutationReceipt.deleteMany();
       await tx.memberMessage.deleteMany();
       await tx.pointsLedger.deleteMany();
@@ -524,7 +527,7 @@ export class DataStoreService {
           id: memberId,
           openId,
           phone: null,
-          nickname: '微信用户',
+          nickname: this.defaultMemberNickname(memberId),
           remark: null,
           avatarUrl: '',
           birthday: null,
@@ -547,6 +550,12 @@ export class DataStoreService {
 
       return this.toMemberProfile(user);
     });
+  }
+
+  async getMemberAuthVersion(memberId: string, openId?: string): Promise<number> {
+    const member = await this.prisma.member.findFirst({ where: { id: memberId, deletedAt: null, ...(openId ? { openId } : {}) }, select: { authVersion: true } });
+    if (!member) throw new BadRequestException('member not found');
+    return member.authVersion;
   }
 
   async listRechargeOrders(userId?: string): Promise<RechargeOrder[]> {
@@ -587,47 +596,96 @@ export class DataStoreService {
       await tx.memberLinkRequest.upsert({
         where: { userId },
         create: { userId, targetMemberId: target.id, codeHash: this.hash(code), expiresAt },
-        update: { targetMemberId: target.id, codeHash: this.hash(code), expiresAt, consumedAt: null },
+        update: { targetMemberId: target.id, codeHash: this.hash(code), expiresAt, consumedAt: null, verifiedPhoneHash: null, sourceAuthVersion: null, targetAuthVersion: null, selfServiceAllowed: false },
       });
       return { code, expiresAt: expiresAt.toISOString() };
+    });
+  }
+
+  // Called only after a fresh phone code has been exchanged server-side with WeChat.
+  async preparePhoneRecovery(userId: string, verifiedPhone: string): Promise<MemberPhoneRecovery> {
+    return this.withWriteTransaction(async (tx) => {
+      const source = await tx.member.findUnique({ where: { id: userId } });
+      const target = await tx.member.findUnique({ where: { phone: verifiedPhone } });
+      if (!source || source.deletedAt || !target || target.deletedAt || source.id === target.id) throw new BadRequestException('会员绑定状态已变化，请重新验证手机号');
+      if (!(await this.canLinkMember(source, tx))) throw new BadRequestException('当前微信账号已有会员资料或业务记录，请联系门店核对；系统不会合并或覆盖任何会员数据');
+      const selfServiceAllowed = await this.canSelfRecover(target, tx);
+      const code = String(randomInt(10000000, 100000000));
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+      const proof = { targetMemberId: target.id, codeHash: this.hash(code), expiresAt, consumedAt: null, verifiedPhoneHash: this.hash(verifiedPhone), sourceAuthVersion: source.authVersion, targetAuthVersion: target.authVersion, selfServiceAllowed };
+      await tx.memberLinkRequest.upsert({ where: { userId }, create: { userId, ...proof }, update: proof });
+      await this.writeAudit({ actorId: userId, actorRole: 'MEMBER', action: 'member.phone.recovery.request', targetType: 'member', targetId: target.id, metadata: { mode: selfServiceAllowed ? 'SELF_SERVICE' : 'STORE_REVIEW', verification: 'WECHAT_PHONE' } }, tx);
+      return { code, expiresAt: expiresAt.toISOString(), mode: selfServiceAllowed ? 'SELF_SERVICE' : 'STORE_REVIEW', maskedPhone: `${verifiedPhone.slice(0, 3)}****${verifiedPhone.slice(-4)}` };
+    });
+  }
+
+  async confirmPhoneRecovery(userId: string, code: string): Promise<{ member: MemberProfile; authVersion: number }> {
+    return this.withWriteTransaction(async (tx) => {
+      const link = await tx.memberLinkRequest.findUnique({ where: { userId } });
+      if (!link || link.codeHash !== this.hash(code) || !link.verifiedPhoneHash || !link.selfServiceAllowed || link.consumedAt || link.expiresAt <= new Date()) throw new BadRequestException('找回验证已失效或需要门店核验，请重新授权手机号');
+      const source = await tx.member.findUnique({ where: { id: userId } });
+      const target = await tx.member.findUnique({ where: { id: link.targetMemberId } });
+      if (!source || source.deletedAt || !target || target.deletedAt || !target.phone || this.hash(target.phone) !== link.verifiedPhoneHash || source.authVersion !== link.sourceAuthVersion || target.authVersion !== link.targetAuthVersion) throw new BadRequestException('会员绑定状态已变化，请重新验证手机号');
+      if (!(await this.canLinkMember(source, tx)) || !(await this.canSelfRecover(target, tx))) throw new BadRequestException('账号已有资料、账务或业务记录，请到店核验关联，原会员数据保持不变');
+      return this.transferWechatBinding(source, target, 'MEMBER', userId, tx);
     });
   }
 
   async confirmMemberLink(memberId: string, adminId: string, payload: ConfirmMemberLinkRequest): Promise<MemberProfile> {
     return this.withWriteTransaction(async (tx) => {
       const link = await tx.memberLinkRequest.findUnique({ where: { codeHash: this.hash(payload.code) } });
-      if (!payload.identityVerified || !link || link.targetMemberId !== memberId || link.consumedAt || link.expiresAt <= new Date()) {
-        throw new BadRequestException('member link code invalid or expired');
-      }
+      if (!payload.identityVerified || !link || link.targetMemberId !== memberId || link.consumedAt || link.expiresAt <= new Date()) throw new BadRequestException('member link code invalid or expired');
       const source = await tx.member.findUnique({ where: { id: link.userId } });
       const target = await tx.member.findUnique({ where: { id: memberId } });
-      if (!source || source.deletedAt || !target || target.deletedAt || !target.openId.startsWith('admin-created-') || target.phone !== payload.verifiedPhone) {
-        throw new BadRequestException('member identity verification failed');
-      }
+      if (!source || source.deletedAt || !target || target.deletedAt || target.phone !== payload.verifiedPhone) throw new BadRequestException('member identity verification failed');
+      // Legacy manual requests are restricted to offline accounts. An existing
+      // WeChat account additionally requires the fresh server-side phone proof.
+      if (link.verifiedPhoneHash) {
+        if (this.hash(payload.verifiedPhone) !== link.verifiedPhoneHash || source.authVersion !== link.sourceAuthVersion || target.authVersion !== link.targetAuthVersion) throw new BadRequestException('member identity verification failed');
+      } else if (!target.openId.startsWith('admin-created-')) throw new BadRequestException('请由顾客重新微信验证手机号后申请关联');
       if (!(await this.canLinkMember(source, tx))) throw new BadRequestException('source member has existing data');
-      // Only retire an empty login placeholder. Existing assets and histories remain on the original member.
-      await tx.member.update({ where: { id: source.id }, data: { openId: `linked-${uuid()}`, phone: null, deletedAt: new Date() } });
-      const updated = await tx.member.update({ where: { id: target.id }, data: {
-        openId: source.openId,
-        avatarUrl: source.avatarUrl || target.avatarUrl,
-      } });
-      await tx.memberLinkRequest.update({ where: { userId: source.id }, data: { consumedAt: new Date() } });
-      await this.writeAudit({ actorId: adminId, actorRole: 'ADMIN', action: 'member.wechat.link', targetType: 'member', targetId: memberId,
-        metadata: { retiredMemberId: source.id, identityVerified: true },
-      }, tx);
-      return this.toMemberProfile(updated);
+      const result = await this.transferWechatBinding(source, target, 'ADMIN', adminId, tx);
+      return result.member;
     });
   }
 
-  private async canLinkMember(member: DbMember, tx: Prisma.TransactionClient): Promise<boolean> {
-    if (member.phone || member.balance !== 0 || member.points !== 0 || member.openId.startsWith('admin-created-')) return false;
+  private async transferWechatBinding(source: DbMember, target: DbMember, actorRole: 'MEMBER' | 'ADMIN', actorId: string, tx: Prisma.TransactionClient): Promise<{ member: MemberProfile; authVersion: number }> {
+    // Never move balances, points, histories or the POS link. Keep the original
+    // member ID and change only its login binding. Old bearer tokens are revoked.
+    await tx.member.update({ where: { id: source.id }, data: { openId: `linked-${uuid()}`, phone: null, deletedAt: new Date(), authVersion: { increment: 1 } } });
+    await tx.memberCredential.updateMany({ where: { memberId: target.id }, data: { enabled: false } });
+    const updated = await tx.member.update({ where: { id: target.id }, data: { openId: source.openId, authVersion: { increment: 1 } } });
+    await tx.memberLinkRequest.update({ where: { userId: source.id }, data: { consumedAt: new Date() } });
+    await this.writeAudit({ actorId, actorRole, action: actorRole === 'ADMIN' ? 'member.wechat.link' : 'member.wechat.recover', targetType: 'member', targetId: target.id, metadata: { retiredMemberId: source.id, identityVerified: true, authVersion: updated.authVersion } }, tx);
+    return { member: this.toMemberProfile(updated), authVersion: updated.authVersion };
+  }
+
+  private async hasNoProtectedRecords(member: DbMember, tx: Prisma.TransactionClient): Promise<boolean> {
+    if (member.balance !== 0 || member.points !== 0) return false;
     const counts = await Promise.all([
+      tx.memberCredential.count({ where: { memberId: member.id } }),
       tx.appointment.count({ where: { userId: member.id } }),
       tx.rechargeOrder.count({ where: { userId: member.id } }),
       tx.consumptionOrder.count({ where: { userId: member.id } }),
       tx.balanceLedger.count({ where: { userId: member.id } }),
+      tx.pointsLedger.count({ where: { userId: member.id } }),
+      tx.memberMessage.count({ where: { userId: member.id } }),
+      tx.accessoryProduct.count({ where: { reservedByUserId: member.id } }),
+      tx.pospalMemberLink.count({ where: { memberId: member.id } }),
+      tx.pospalMemberSync.count({ where: { memberId: member.id } }),
     ]);
     return counts.every(count => count === 0);
+  }
+
+  private async canLinkMember(member: DbMember, tx: Prisma.TransactionClient): Promise<boolean> {
+    return !member.phone && !member.openId.startsWith('admin-created-') && await this.hasNoProtectedRecords(member, tx);
+  }
+
+  private async canSelfRecover(member: DbMember, tx: Prisma.TransactionClient): Promise<boolean> {
+    if (member.openId.startsWith('admin-created-') || member.avatarUrl || member.birthday || member.remark || (member.nickname && member.nickname !== '微信用户' && member.nickname !== this.defaultMemberNickname(member.id))) return false;
+    const defaultLevel = await tx.memberLevel.findFirst({ orderBy: { minPoints: 'asc' } });
+    if (!defaultLevel || member.levelId !== defaultLevel.id || member.discountRate !== defaultLevel.discountRate) return false;
+    return this.hasNoProtectedRecords(member, tx);
   }
 
   async applyRecharge(userId: string, payload: RechargeApplyRequest): Promise<RechargeOrder> {
@@ -2684,6 +2742,12 @@ export class DataStoreService {
         createdAt: new Date(),
       },
     });
+  }
+
+  private defaultMemberNickname(memberId: string): string {
+    // Stable per member, independent of phone/WeChat details. Exact regeneration
+    // also distinguishes system defaults from custom names during recovery.
+    return `月光会员${createHash('sha256').update(memberId).digest('hex').slice(0, 6).toUpperCase()}`;
   }
 
   private toMemberProfile(member: DbMember): MemberProfile {

@@ -47,8 +47,7 @@ import { ref, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { MemberMessage } from '@member-platform/shared';
 import { createMyMessage, listMyMessages, readableErrorMessage } from '@/utils/api';
-import { requireReadyMember } from '@/utils/member';
-import { isMemberEntryReady } from '@/utils/member-entry';
+import { requireReadyMember, isMemberEntryReady } from '@/utils/member';
 import { sessionState } from '@/store/session';
 
 const messages = ref<MemberMessage[]>([]);

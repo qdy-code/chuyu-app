@@ -2,6 +2,7 @@ import { reactive } from 'vue';
 import type { LoginResponse, MemberProfile } from '@member-platform/shared';
 
 interface SessionState {
+  loginMethod: 'wechat' | 'password';
   token: string;
   userId: string;
   profile: MemberProfile | null;
@@ -10,6 +11,7 @@ interface SessionState {
 const SESSION_STORAGE_KEY = 'member-miniapp-session';
 
 export const sessionState = reactive<SessionState>({
+  loginMethod: 'wechat',
   token: '',
   userId: '',
   profile: null,
@@ -28,6 +30,7 @@ export function restoreSession(): boolean {
     return false;
   }
 
+  sessionState.loginMethod = cached.loginMethod === 'password' ? 'password' : 'wechat';
   sessionState.token = token;
   sessionState.userId = userId;
   sessionState.profile = cached.profile && cached.profile.id === userId ? cached.profile : null;
@@ -35,6 +38,7 @@ export function restoreSession(): boolean {
 }
 
 export function setLoginSession(response: LoginResponse): void {
+  sessionState.loginMethod = response.loginMethod === 'password' ? 'password' : 'wechat';
   sessionState.token = response.token;
   sessionState.userId = response.user.id;
   sessionState.profile = response.user;
@@ -48,6 +52,7 @@ export function setProfile(profile: MemberProfile): void {
 }
 
 export function clearSession(): void {
+  sessionState.loginMethod = 'wechat';
   sessionState.token = '';
   sessionState.userId = '';
   sessionState.profile = null;
@@ -56,6 +61,7 @@ export function clearSession(): void {
 
 function persistSession(): void {
   uni.setStorageSync(SESSION_STORAGE_KEY, {
+    loginMethod: sessionState.loginMethod,
     token: sessionState.token,
     userId: sessionState.userId,
     profile: sessionState.profile,

@@ -5,8 +5,9 @@
       <image class="header-bg" src="/static/brand/account-header.jpg" mode="aspectFill" />
       <view class="header-copy">
         <text class="header-kicker">MOONSTONE ISLE</text>
-        <text class="header-title">{{ setupMode ? '完善会员资料' : '账户资料' }}</text>
-        <text class="header-desc">{{ setupMode ? '选择头像和昵称，保存到门店会员后台；也可稍后完善。' : '修改头像和昵称，查看会员号并管理个人资料' }}</text>
+        <text class="header-title">{{ setupMode ? '头像与昵称' : '账户资料' }}</text>
+        <text class="header-desc">{{ setupMode ? '头像和昵称可自行修改，保存后用于会员资料展示。' : '修改头像和昵称，查看会员号并管理个人资料' }}</text>
+        <text v-if="setupMode && sessionState.profile?.phone" class="header-desc">已绑定手机号：{{ sessionState.profile.phone.slice(0, 3) }}****{{ sessionState.profile.phone.slice(-4) }}</text>
       </view>
     </view>
 
@@ -31,13 +32,14 @@
             <image class="profile-avatar" :src="avatarSrc" mode="aspectFill" />
           </button>
           <view class="avatar-copy">
-            <text class="avatar-title">{{ avatarSaving ? '头像上传中...' : '点击选择头像' }}</text>
-            <text class="hint">保存后用于会员资料和预约信息。</text>
+            <text class="avatar-title">{{ avatarSaving ? '头像上传中...' : '选择头像' }}</text>
+            <text class="hint">可选用微信头像或上传图片，保存后用于会员资料展示。</text>
           </view>
         </view>
       </view>
 
-      <form class="card" @submit="saveNickname">
+      <view class="card">
+      <form @submit="saveNickname">
         <view class="section-heading">
           <text class="section-title">我的昵称</text>
           <text class="required-pill">可修改</text>
@@ -48,17 +50,18 @@
           type="nickname"
           name="nickname"
           maxlength="30"
-          placeholder="选择昵称，也可自行填写"
+          placeholder="点击选用微信昵称，也可自行填写"
         />
-        <text class="hint">昵称用于小程序内展示，可随时修改；会员号由系统生成且不可修改。</text>
+        <text class="hint">点击输入框可选用微信提供的昵称，也可自行填写；保存后用于会员资料展示。</text>
         <button class="secondary-btn" form-type="submit" :disabled="nicknameSaving || avatarSaving || phoneSaving">
-          {{ nicknameSaving ? '保存中...' : setupMode ? '保存昵称并进入' : '保存昵称' }}
+          {{ nicknameSaving ? '保存中...' : setupMode ? '保存资料并进入' : '保存昵称' }}
         </button>
       </form>
+      </view>
 
       <view v-if="setupMode" class="card">
         <text class="hint">头像选择后即上传保存，昵称点击保存后同步到会员后台。</text>
-        <button class="secondary-btn" :disabled="nicknameSaving || avatarSaving || phoneSaving" @click="goHome">稍后完善，进入会员中心</button>
+        <button class="secondary-btn" :disabled="nicknameSaving || avatarSaving || phoneSaving" @click="goHome">返回会员中心</button>
       </view>
 
       <view v-if="!setupMode" class="card">
@@ -103,8 +106,8 @@
           <text class="info-label">联系手机号</text>
           <text class="info-value">{{ sessionState.profile.phone || '未填写' }}</text>
         </view>
-        <text class="hint">手机号由你主动验证或填写，用于门店确认预约和会员资料。</text>
-        <template v-if="sessionState.profile.pospal?.state === 'UNLINKED' && !sessionState.profile.pospal.memberSync">
+        <text class="hint">{{ sessionState.loginMethod === 'password' ? '关联手机号或门店会员需使用本人微信登录，并由门店核验。' : '手机号由你主动验证或填写，用于门店确认预约和会员资料。' }}</text>
+        <template v-if="sessionState.profile.pospal?.state === 'UNLINKED' && !sessionState.profile.pospal.memberSync && sessionState.loginMethod !== 'password'">
           <text class="hint">验证手机号后可同步门店会员；已有会员由门店核验关联。</text>
           <button class="secondary-btn" open-type="getPhoneNumber|agreePrivacyAuthorization" :disabled="phoneSaving || avatarSaving || nicknameSaving || !phoneSyncConsent" @getphonenumber="verifyPhoneForSync">{{ phoneSaving ? '保存中...' : '验证手机号并同步会员' }}</button>
           <button v-if="!phoneSyncConsent" class="secondary-btn" @click="goHome">返回首页确认最新隐私政策</button>
@@ -113,7 +116,7 @@
 
       <view v-if="!setupMode" class="card danger-zone">
         <text class="section-title">登录状态</text>
-        <text class="hint">退出后会清除本机缓存的会员登录状态，下次进入会自动重新登录。</text>
+        <text class="hint">退出后会清除本机缓存的会员登录状态，再次进入时可选择微信或账号密码登录。</text>
         <button class="logout-btn" @click="confirmLogout">退出登录</button>
       </view>
     </template>
@@ -136,6 +139,7 @@ import { computed, ref } from 'vue';
 import { memberNumber } from '@/utils/member-display';
 import { clearPendingBooking } from '@/utils/booking-flow';
 import { onLoad, onShow } from '@dcloudio/uni-app';
+import { beginPhoneRecovery } from '@/utils/phone-recovery';
 import { bindWechatPhone, readableErrorMessage, updateMyProfile, uploadMyAvatar } from '@/utils/api';
 import { clearSession, sessionState, setProfile } from '@/store/session';
 import { resolveImageForDisplay } from '@/utils/image-cache';
@@ -149,7 +153,7 @@ async function verifyPhoneForSync(event: { detail: { code?: string } }) {
   if (!event.detail.code) { uni.showToast({ title: '手机号授权未完成', icon: 'none' }); return; }
   phoneSaving.value = true;
   try { setProfile(await bindWechatPhone(event.detail.code)); uni.showToast({ title: '已加入会员同步', icon: 'success' }); }
-  catch (error) { uni.showToast({ title: readableErrorMessage(error, '请重新授权或联系门店').slice(0, 18), icon: 'none' }); }
+  catch (error) { if (beginPhoneRecovery(error)) { uni.switchTab({ url: '/pages/index/index' }); return; } uni.showToast({ title: readableErrorMessage(error, '请重新授权或联系门店').slice(0, 18), icon: 'none' }); }
   finally { phoneSaving.value = false; }
 }
 const setupMode = ref(false);

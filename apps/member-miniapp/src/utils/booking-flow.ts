@@ -26,7 +26,7 @@ export function takePendingBooking(businessType: BusinessType): BookingIntent | 
 }
 
 export function resumePendingBooking(): boolean {
-  if (!pendingBooking || !sessionState.token || !sessionState.profile?.phone || !hasLegalConsent()) return false;
+  if (!pendingBooking || !sessionState.token || (!sessionState.profile?.phone && sessionState.loginMethod !== 'password') || !hasLegalConsent()) return false;
   if (navigating) return true;
   navigating = true;
   const complete = () => { navigating = false; };

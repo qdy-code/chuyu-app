@@ -12,6 +12,7 @@ model Member {
   openId       String  @unique
   phone        String? @unique
   phoneVerifiedAt DateTime?
+  authVersion  Int @default(0)
   nickname     String
   remark       String?
   avatarUrl    String
@@ -25,8 +26,21 @@ model Member {
   deletedAt    DateTime?
   pospalLink   PospalMemberLink?
   pospalSync   PospalMemberSync?
+  credential   MemberCredential?
 
   @@index([levelId])
+}
+
+model MemberCredential {
+  memberId String @id
+  username String @unique
+  passwordHash String
+  enabled Boolean @default(true)
+  failedAttempts Int @default(0)
+  lockedUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model MemberLevel {
@@ -104,6 +118,10 @@ model MemberLinkRequest {
   codeHash       String   @unique
   expiresAt      DateTime
   consumedAt     DateTime?
+  verifiedPhoneHash String?
+  sourceAuthVersion Int?
+  targetAuthVersion Int?
+  selfServiceAllowed Boolean @default(false)
 
   @@index([targetMemberId])
 }

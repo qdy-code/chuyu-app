@@ -8,13 +8,14 @@ import type {
   CreateAppointmentRequest,
   LoginResponse,
   MemberProfile,
-  MemberLinkCode,
+  MemberPhoneRecovery,
   MemberMessage,
   PointsLedgerEntry,
   ProductCategory,
   RechargeOrder,
   UpdateMyProfileRequest,
 } from '@member-platform/shared';
+import { PhoneConflictError } from '@/utils/phone-conflict';
 import { clearSession, sessionState } from '@/store/session';
 
 const CONFIGURED_API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined);
@@ -163,7 +164,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
           resolve(res.data as T);
           return;
         }
+        if (res.statusCode === 409 && path === '/members/me/phone') {
+          const recovery = (res.data as { phoneRecovery?: MemberPhoneRecovery })?.phoneRecovery;
+          if (recovery && /^\d{8}$/.test(recovery.code) && ['SELF_SERVICE', 'STORE_REVIEW'].includes(recovery.mode) && Number.isFinite(Date.parse(recovery.expiresAt))) {
+            reject(new PhoneConflictError(recovery));
+            return;
+          }
+        }
         if (res.statusCode === 401) {
+          if (path === '/auth/member/password-login') {
+            reject(new Error(readableErrorMessage(res.data, '账号或密码不正确')));
+            return;
+          }
           clearSession();
           reject(new Error('登录状态已过期，请重新登录'));
           return;
@@ -187,6 +199,12 @@ export async function wechatLoginWithProfile(payload: {
   });
 }
 
+export function memberPasswordLogin(username: string, password: string): Promise<LoginResponse> {
+  return request<LoginResponse>('/auth/member/password-login', {
+    method: 'POST', body: JSON.stringify({ username, password }),
+  });
+}
+
 export async function getMyProfile(): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me');
 }
@@ -202,8 +220,10 @@ export function bindWechatPhone(code: string): Promise<MemberProfile> {
   });
 }
 
-export function createMemberLinkCode(phone: string): Promise<MemberLinkCode> {
-  return request<MemberLinkCode>('/members/me/link-code', { method: 'POST', body: JSON.stringify({ phone }) });
+export function confirmPhoneRecovery(code: string): Promise<LoginResponse> {
+  return request<LoginResponse>('/members/me/phone-recovery/confirm', {
+    method: 'POST', body: JSON.stringify({ code, confirmed: true }),
+  });
 }
 
 export async function updateMyProfile(payload: UpdateMyProfileRequest): Promise<MemberProfile> {

@@ -8,7 +8,7 @@ const vue = require('vue');
 
 // Run the real page handlers with a simulated WeChat runtime and API; no live writes.
 function setup(t, overrides = {}, initialProfile = null) {
-  const session = vue.reactive({ userId: initialProfile?.id || '', token: initialProfile ? 'token-a' : '', profile: initialProfile });
+  const session = vue.reactive({ loginMethod: 'wechat', userId: initialProfile?.id || '', token: initialProfile ? 'token-a' : '', profile: initialProfile });
   const storage = new Map();
   const navigation = [];
   const notices = [];
@@ -23,6 +23,7 @@ function setup(t, overrides = {}, initialProfile = null) {
     removeStorageSync: (key) => storage.delete(key),
     navigateTo: (options) => { navigation.push(options.url); options.success?.(); options.complete?.(); },
     switchTab: (options) => { navigation.push(options.url); options.success?.(); options.complete?.(); },
+    reLaunch: (options) => { navigation.push(options.url); options.success?.(); options.complete?.(); },
     showModal: (options) => { notices.push(options); options.success?.({ confirm: accept }); },
     showToast: (options) => notices.push(options),
     showLoading() {}, hideLoading() {},
@@ -58,8 +59,8 @@ function setup(t, overrides = {}, initialProfile = null) {
   const sessionModule = {
     sessionState: session, restoreSession() {},
     setProfile: (profile) => { session.profile = profile; session.userId = profile.id; },
-    clearSession: () => { session.userId = ''; session.token = ''; session.profile = null; },
-    setLoginSession: (response) => { session.userId = response.user.id; session.token = response.token; session.profile = response.user; },
+    clearSession: () => { session.loginMethod = 'wechat'; session.userId = ''; session.token = ''; session.profile = null; },
+    setLoginSession: (response) => { session.loginMethod = response.loginMethod || 'wechat'; session.userId = response.user.id; session.token = response.token; session.profile = response.user; },
   };
   const cache = new Map();
   const scope = vue.effectScope();
@@ -108,88 +109,98 @@ function authorize(ctx) {
   return member;
 }
 
-test('all pages share one public brand card without member data, inherited queries or prompts', (t) => {
+test('all pages share a public catalog card without member data, inherited queries or prompts', (t) => {
   const ctx = setup(t, {}, { ...linked, nickname: 'PRIVATE_NICKNAME', balance: 98765.43 });
-  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
+  const { publicShareMixin } = ctx.load('utils/public-share.ts');
   const { pages } = JSON.parse(readFileSync(resolve(__dirname, '../pages.json'), 'utf8'));
   const input = { from: 'menu', query: 'token=PRIVATE_TOKEN&phone=13999999999&booking=1' };
   for (const page of pages) {
     const self = { $scope: { route: page.path }, profile: ctx.session.profile };
-    const friend = memberPageMixin.onShareAppMessage.call(self, input);
-    const timeline = memberPageMixin.onShareTimeline.call(self, input);
+    const friend = publicShareMixin.onShareAppMessage.call(self, input);
+    const timeline = publicShareMixin.onShareTimeline.call(self, input);
     assert.deepEqual(JSON.parse(JSON.stringify(friend)), {
-      title: '月光石屿 MOONISLE｜美甲 · 饰品 · 鲜花', imageUrl: '/static/brand/share-cover.png', path: '/pages/index/index',
+      title: '月光石屿 MOONISLE｜美甲 · 饰品 · 鲜花', imageUrl: '/static/brand/share-cover.png', path: '/pages/nail/nail',
     });
     assert.equal(timeline.query, 'entry=share');
     assert.equal(timeline.imageUrl, '/static/brand/share-cover-square.png');
     assert.doesNotMatch(JSON.stringify([friend, timeline]), /PRIVATE_|13999999999|13800138000|token-a|VIP-008|98765|booking=/);
   }
+  assert.equal(publicShareMixin.onShow, undefined);
   assert.equal(ctx.navigation.length, 0);
   assert.equal(ctx.notices.length, 0);
   assert.equal(ctx.payloads.length, 0);
 });
 
-test('new visitors enter the existing login page silently and can read both agreements', (t) => {
-  const ctx = setup(t);
-  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
-  const { pages } = JSON.parse(readFileSync(resolve(__dirname, '../pages.json'), 'utf8'));
-  for (const page of pages) {
-    const before = ctx.navigation.length;
-    memberPageMixin.onShow.call({ $scope: { route: page.path } });
-    assert.equal(ctx.navigation.length - before, ['pages/index/index', 'pages/legal/privacy', 'pages/legal/terms'].includes(page.path) ? 0 : 1);
+test('guests can browse all catalogs and nail detail before login, consent or phone authorization', async (t) => {
+  let loginCalls = 0, profileCalls = 0;
+  const ctx = setup(t, {
+    wechatLoginWithProfile: async () => { loginCalls++; throw Error('unexpected login'); },
+    getMyCachedProfile: async () => { profileCalls++; throw Error('unexpected profile read'); },
+  });
+  const { publicShareMixin } = ctx.load('utils/public-share.ts');
+  for (const route of ['nail/nail', 'accessory/accessory', 'flower/flower', 'nail-detail/nail-detail']) {
+    const name = `pages/${route}.vue`;
+    ctx.load(name);
+    publicShareMixin.onLoad.call({ $scope: { route: `pages/${route}` } }, {});
+    ctx.hooks.get(name + ':load')?.({ id: product.id });
+    for (const hook of ctx.hooks.get(name)) await hook();
   }
-  assert.ok(ctx.navigation.every(path => path === '/pages/index/index'));
-  assert.equal(ctx.notices.length, 0);
+  assert.equal(loginCalls, 0); assert.equal(profileCalls, 0);
   assert.equal(ctx.session.userId, '');
+  assert.equal(ctx.navigation.length, 0);
+  assert.equal(ctx.notices.length, 0);
   assert.equal(ctx.payloads.length, 0);
 });
 
-test('phone setup and consent must be completed before entering other pages; returning members proceed', (t) => {
+test('a logged-in visitor without phone or legal consent can still browse public products', async (t) => {
   const ctx = setup(t, {}, { ...linked, phone: undefined });
-  const { memberPageMixin, isMemberEntryReady } = ctx.load('utils/member-entry.ts');
-  const self = { $scope: { route: 'pages/nail/nail' } };
-  assert.equal(isMemberEntryReady(), false);
-  memberPageMixin.onShow.call(self);
-  assert.equal(ctx.navigation.length, 1);
-  ctx.session.profile.phone = linked.phone;
-  memberPageMixin.onShow.call(self);
-  assert.equal(ctx.navigation.length, 2);
-  authorize(ctx);
-  assert.equal(isMemberEntryReady(), true);
-  memberPageMixin.onShow.call(self);
-  assert.equal(ctx.navigation.length, 2);
-  ctx.session.token = '';
-  memberPageMixin.onShow.call(self);
-  assert.equal(ctx.navigation.length, 3);
+  const name = 'pages/nail/nail.vue';
+  const page = ctx.load(name, ['products']);
+  for (const hook of ctx.hooks.get(name)) await hook();
+  assert.equal(page.products.value.length, 1);
+  assert.equal(ctx.navigation.length, 0);
   assert.equal(ctx.notices.length, 0);
 });
 
-test('timeline links open member entry and never adopt sender identity or original page params', (t) => {
+test('timeline links open the public catalog and never adopt sender identity', (t) => {
   const ctx = setup(t, {}, linked); authorize(ctx);
-  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
-  memberPageMixin.onLoad.call({ $scope: { route: 'pages/consumptions/consumptions' } }, { entry: 'share', memberId: 'PRIVATE_SENDER', token: 'PRIVATE_SENDER_TOKEN' });
-  assert.equal(ctx.navigation.at(-1), '/pages/index/index');
+  const { publicShareMixin } = ctx.load('utils/public-share.ts');
+  publicShareMixin.onLoad.call({ $scope: { route: 'pages/consumptions/consumptions' } }, { entry: 'share', memberId: 'PRIVATE_SENDER', token: 'PRIVATE_SENDER_TOKEN' });
+  assert.equal(ctx.navigation.at(-1), '/pages/nail/nail');
   assert.equal(ctx.session.userId, linked.id);
   assert.equal(ctx.session.token, 'token-a');
   const before = ctx.navigation.length;
-  memberPageMixin.onLoad.call({ $scope: { route: 'pages/index/index' } }, { entry: 'share' });
-  memberPageMixin.onLoad.call({ $scope: { route: 'pages/nail/nail' } }, {});
+  publicShareMixin.onLoad.call({ $scope: { route: 'pages/nail/nail' } }, { entry: 'share' });
+  publicShareMixin.onLoad.call({ $scope: { route: 'pages/legal/privacy' } }, {});
   assert.equal(ctx.navigation.length, before);
   assert.equal(ctx.notices.length, 0);
 });
 
-test('entry redirects are deduplicated during page loading and recover after navigation completes', (t) => {
-  const ctx = setup(t);
-  const { memberPageMixin } = ctx.load('utils/member-entry.ts');
-  const self = { $scope: { route: 'pages/nail/nail' } };
-  const navigations = [];
-  ctx.uni.switchTab = options => navigations.push(options);
-  memberPageMixin.onLoad.call(self, { entry: 'share' });
-  memberPageMixin.onShow.call(self);
-  assert.equal(navigations.length, 1);
-  navigations[0].complete();
-  memberPageMixin.onShow.call(self);
-  assert.equal(navigations.length, 2);
+test('login is offered only after the guest chooses booking; cancelling stays in the catalog', async (t) => {
+  let loginCalls = 0;
+  const ctx = setup(t, { wechatLoginWithProfile: async () => { loginCalls++; throw Error('unexpected login'); } });
+  const name = 'pages/nail/nail.vue';
+  const page = ctx.load(name, ['openAppointment']);
+  for (const hook of ctx.hooks.get(name)) await hook();
+  assert.equal(ctx.notices.length, 0);
+  ctx.cancel();
+  await page.openAppointment(product);
+  assert.equal(ctx.notices[0].title, '需要登录');
+  assert.equal(loginCalls, 0);
+  assert.equal(ctx.navigation.length, 0);
+  assert.equal(ctx.payloads.length, 0);
+});
+
+test('member entry offers browsing and completed phone setup never forces avatar or nickname collection', (t) => {
+  const ctx = setup(t, {}, { ...linked, nickname: '微信用户', avatarUrl: '' }); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['browseCatalog', 'completeEntry', 'needsProfileSetup']);
+  assert.equal(page.needsProfileSetup.value, true);
+  page.completeEntry();
+  assert.equal(ctx.navigation.length, 0);
+  page.browseCatalog();
+  assert.equal(ctx.navigation.at(-1), '/pages/nail/nail');
+  assert.equal(ctx.notices.length, 0);
+  assert.equal(ctx.payloads.length, 0);
 });
 
 test('favorites persist by member and business, survive a fresh module, and may be removed', (t) => {
@@ -381,19 +392,17 @@ test('member numbers and recharge labels retain the POS account boundary', (t) =
 });
 
 for (const [business, page, method] of [['NAIL', 'nail', 'openAppointment'], ['ACCESSORY', 'accessory', 'openReserve'], ['FLOWER', 'flower', 'openReserve']]) {
-  test(`${business}: first login and phone setup return to the selected product without submitting or requesting an avatar`, async (t) => {
+  test(`${business}: first phone login returns directly to the selected product without requesting profile setup or submitting`, async (t) => {
     const ctx = setup(t);
     const source = ctx.load(`pages/${page}/${page}.vue`, [method]);
     await source[method](product);
     assert.equal(ctx.navigation.at(-1), '/pages/index/index');
-    const index = ctx.load('pages/index/index.vue', ['handleLegalConsentChange', 'handleEnter', 'phoneInput', 'submitPhone']);
+    const index = ctx.load('pages/index/index.vue', ['handleLegalConsentChange', 'handleWechatPhone']);
     index.handleLegalConsentChange({ detail: { value: ['accepted'] } });
-    await index.handleEnter();
+    await index.handleWechatPhone({ detail: { code: 'authorized-phone-code' } });
     assert.equal(ctx.payloads.length, 0);
-    index.phoneInput.value = '13800138000';
-    await index.submitPhone();
+    assert.equal(ctx.navigation.some(url => url.includes('account?setup')), false);
     assert.equal(ctx.navigation.at(-1), business === 'NAIL' ? '/pages/appointment/appointment?booking=1' : `/pages/${page}/${page}`);
-    assert.equal(ctx.navigation.some((url) => url.includes('account?setup')), false);
     const flow = ctx.load('utils/booking-flow.ts');
     const intent = flow.takePendingBooking(business);
     assert.equal(intent.product.id, product.id);
@@ -748,7 +757,7 @@ test('page browsing and booking access use one cached profile read and no paid b
   const member = authorize(ctx);
   await Promise.all([member.loadSessionProfile(), member.loadSessionProfile()]);
   for (let i = 0; i < 10; i++) {
-    assert.equal(await member.ensureSession(), true);
+    assert.equal(await member.loadSessionProfile(), true);
     assert.equal(await member.ensureReadyMemberAccess(), true);
   }
   ctx.load('pages/card/card.vue');
@@ -919,4 +928,285 @@ test('nail list can retry a failed photo and preview the chosen original without
   gallery.markFailed(0); props.images = ['/uploads/another.jpg']; await vue.nextTick();
   assert.equal(gallery.failedImages.value[0], undefined);
   assert.equal(ctx.payloads.length, 0);
+});
+
+test('a verified phone conflict offers recovery without changing member identity until explicit confirmation', async (t) => {
+  let ctx;
+  const challenge = { code: '12345678', expiresAt: '2027-01-01T00:00:00Z', mode: 'SELF_SERVICE', maskedPhone: '139****9999' };
+  let confirmations = 0;
+  ctx = setup(t, {
+    bindWechatPhone: async () => { throw new (ctx.load('utils/phone-conflict.ts').PhoneConflictError)(challenge); },
+    confirmPhoneRecovery: async code => { confirmations++; assert.equal(code, challenge.code); return { token: 'new-original-token', user: { ...linked, id: 'original-member', balance: 0, points: 0 } }; },
+  }, { ...linked, id: 'new-empty-member', phone: undefined, balance: 0, points: 0 });
+  authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'phoneRecovery', 'confirmRecovery']);
+  await page.handleWechatPhone({ detail: { code: 'fresh-wechat-phone-code' } });
+  assert.equal(page.phoneRecovery.value.code, challenge.code);
+  assert.equal(ctx.session.userId, 'new-empty-member'); assert.equal(confirmations, 0);
+  assert.equal(ctx.notices.length, 0);
+  await page.confirmRecovery();
+  assert.equal(confirmations, 1); assert.equal(ctx.session.userId, 'original-member');
+  assert.equal(ctx.session.token, 'new-original-token'); assert.equal(page.phoneRecovery.value, null);
+});
+
+test('a protected original member can only use store verification and cannot self-confirm', async (t) => {
+  let ctx; let confirmations = 0;
+  const challenge = { code: '12345678', expiresAt: '2027-01-01T00:00:00Z', mode: 'STORE_REVIEW', maskedPhone: '139****9999' };
+  ctx = setup(t, { bindWechatPhone: async () => { throw new (ctx.load('utils/phone-conflict.ts').PhoneConflictError)(challenge); }, confirmPhoneRecovery: async () => { confirmations++; } }, { ...linked, phone: undefined });
+  authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'phoneRecovery', 'confirmRecovery']);
+  await page.handleWechatPhone({ detail: { code: 'fresh-code' } }); await page.confirmRecovery();
+  assert.equal(page.phoneRecovery.value.mode, 'STORE_REVIEW'); assert.equal(confirmations, 0); assert.equal(ctx.session.userId, linked.id);
+  const template = readFileSync(resolve(__dirname, '../pages/index/index.vue'), 'utf8');
+  assert.match(template, /原会员资料需要门店核验/); assert.match(template, /余额、积分和历史记录均保留在原会员/);
+});
+
+test('cancelling or switching sessions clears recovery proof without registration or account transfer', async (t) => {
+  const ctx = setup(t, {}, { ...linked, phone: undefined });
+  const recovery = ctx.load('utils/phone-recovery.ts');
+  const ErrorType = ctx.load('utils/phone-conflict.ts').PhoneConflictError;
+  const proof = { code: '12345678', mode: 'SELF_SERVICE', expiresAt: '2027-01-01T00:00:00Z', maskedPhone: '139****9999' };
+  recovery.beginPhoneRecovery(new ErrorType(proof)); recovery.clearPhoneRecovery(); assert.equal(recovery.phoneRecoveryState.challenge, null);
+  recovery.beginPhoneRecovery(new ErrorType(proof)); ctx.session.userId = 'a-different-member';
+  assert.equal(recovery.phoneRecoveryState.challenge, null); assert.equal(ctx.payloads.length, 0); assert.equal(ctx.navigation.length, 0);
+});
+
+test('expired or concurrently changed recovery never swaps identity or silently retries', async (t) => {
+  const ctx = setup(t, { confirmPhoneRecovery: async () => { throw new Error('会员绑定状态已变化，请重新验证手机号'); } }, { ...linked, phone: undefined });
+  const page = ctx.load('pages/index/index.vue', ['confirmRecovery']);
+  const recovery = ctx.load('utils/phone-recovery.ts');
+  recovery.beginPhoneRecovery(new (ctx.load('utils/phone-conflict.ts').PhoneConflictError)({ code: '12345678', mode: 'SELF_SERVICE', expiresAt: '2027-01-01T00:00:00Z', maskedPhone: '139****9999' }));
+  await page.confirmRecovery();
+  assert.equal(ctx.session.userId, linked.id); assert.equal(recovery.phoneRecoveryState.challenge, null);
+  assert.match(ctx.notices.at(-1).content, /重新验证手机号/);
+});
+
+test('release pages contain no independent test-account login or demonstration hooks', () => {
+  const root = resolve(__dirname, '..');
+  const { pages } = JSON.parse(readFileSync(resolve(root, 'pages.json'), 'utf8'));
+  assert.ok(pages.every(page => !page.path.includes('review-login')));
+  const mine = readFileSync(resolve(root, 'pages/index/index.vue'), 'utf8');
+  assert.doesNotMatch(mine, /测试账号登录|ReviewNotice|openReviewLogin/);
+  assert.doesNotMatch(readFileSync(resolve(root, 'utils/api.ts'), 'utf8'), /auth\/review|reviewLoginWithProfile/);
+});
+
+test('checking a pending store association keeps its code while the same member is still waiting', async (t) => {
+  const source = { ...linked, phone: undefined };
+  const ctx = setup(t, { wechatLoginWithProfile: async () => ({ token: 'refreshed-same-member-token', user: source }) }, source);
+  const page = ctx.load('pages/index/index.vue', ['refreshLinkedMember']);
+  const recovery = ctx.load('utils/phone-recovery.ts');
+  recovery.beginPhoneRecovery(new (ctx.load('utils/phone-conflict.ts').PhoneConflictError)({ code: '12345678', mode: 'STORE_REVIEW', expiresAt: '2027-01-01T00:00:00Z', maskedPhone: '139****9999' }));
+  await page.refreshLinkedMember();
+  assert.equal(ctx.session.userId, source.id);
+  assert.equal(recovery.phoneRecoveryState.challenge.code, '12345678');
+  assert.match(ctx.notices.at(-1).title, /等待门店确认/);
+});
+
+
+test('password login requires consent, clears password and opens the normal member account without phone authorization', async (t) => {
+  let calls = 0;
+  const account = { id: 'issued-member', nickname: '体验会员', balance: 0, points: 0 };
+  const ctx = setup(t, { memberPasswordLogin: async (username, password) => {
+    calls++; assert.equal(username, 'issued_account'); assert.equal(password, 'OwnPasswordForTest');
+    return { token: 'normal-member-token', user: account, loginMethod: 'password' };
+  } });
+  const page = ctx.load('pages/index/index.vue', ['handlePasswordLogin', 'loginUsername', 'loginPassword', 'passwordError', 'legalAccepted', 'needsPhoneSetup']);
+  page.loginUsername.value = 'issued_account'; page.loginPassword.value = 'OwnPasswordForTest';
+  await page.handlePasswordLogin(); assert.equal(calls, 0); assert.match(page.passwordError.value, /协议/);
+  authorize(ctx); page.legalAccepted.value = true;
+  await page.handlePasswordLogin(); assert.equal(calls, 1);
+  assert.equal(ctx.session.userId, account.id); assert.equal(ctx.session.loginMethod, 'password');
+  assert.equal(page.loginPassword.value, ''); assert.equal(page.needsPhoneSetup.value, false);
+  const member = ctx.load('utils/member.ts');
+  assert.equal(member.isMemberEntryReady(), true); assert.equal(member.requireReadyMember(), true);
+  assert.equal(ctx.notices.length, 0);
+});
+
+test('wrong password stays at login and is never retained; ordinary WeChat registration still needs phone', async (t) => {
+  const ctx = setup(t, { memberPasswordLogin: async () => { throw Error('账号或密码不正确'); } });
+  authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handlePasswordLogin', 'loginUsername', 'loginPassword', 'passwordError', 'needsPhoneSetup']);
+  page.loginUsername.value = 'issued_account'; page.loginPassword.value = 'WrongPasswordForTest';
+  await page.handlePasswordLogin();
+  assert.equal(ctx.session.userId, ''); assert.equal(page.loginPassword.value, ''); assert.match(page.passwordError.value, /密码不正确/);
+  ctx.session.userId = 'wechat-member'; ctx.session.token = 'wechat-token'; ctx.session.profile = { id: 'wechat-member' };
+  assert.equal(page.needsPhoneSetup.value, true); assert.equal(ctx.load('utils/member.ts').isMemberEntryReady(), false);
+});
+
+test('password login resumes the selected booking without submitting it automatically', async t => {
+  const ctx = setup(t, {}, { id: 'issued-member', nickname: '体验会员' }); authorize(ctx); ctx.session.loginMethod = 'password';
+  const booking = ctx.load('utils/booking-flow.ts');
+  booking.rememberBooking({ businessType: 'NAIL', product });
+  assert.equal(booking.resumePendingBooking(), true);
+  assert.equal(ctx.navigation[0], '/pages/appointment/appointment?booking=1'); assert.equal(booking.takePendingBooking('NAIL').product.id, product.id); assert.equal(ctx.payloads.length, 0);
+});
+
+test('a WeChat member awaiting phone setup can explicitly switch to password login without altering their server account', t => {
+  const ctx = setup(t, {}, { id: 'pending-wechat', nickname: '微信用户' }); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['switchToPasswordLogin', 'showPasswordLogin']);
+  page.switchToPasswordLogin();
+  assert.equal(ctx.session.userId, ''); assert.equal(page.showPasswordLogin.value, true); assert.equal(ctx.payloads.length, 0);
+});
+
+test('session storage retains only login method and token/profile, and a new WeChat login clears password method', () => {
+  const storage = new Map(); const exports = {};
+  const code = ts.transpile(readFileSync(resolve(__dirname, '../store/session.ts'), 'utf8'), { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
+  vm.runInNewContext(code, { exports, require: () => vue, uni: { getStorageSync: k => storage.get(k), setStorageSync: (k,v) => storage.set(k,v), removeStorageSync: k => storage.delete(k) } });
+  exports.setLoginSession({ token: 'member-token', user: { id: 'issued-member' }, loginMethod: 'password' });
+  assert.equal(exports.restoreSession(), true); assert.equal(exports.sessionState.loginMethod, 'password');
+  assert.doesNotMatch(JSON.stringify([...storage.values()]), /passwordHash|loginPassword|username/);
+  exports.setLoginSession({ token: 'wx-token', user: { id: 'wx-member' } }); assert.equal(exports.sessionState.loginMethod, 'wechat');
+  exports.clearSession(); assert.equal(storage.size, 0); assert.equal(exports.sessionState.loginMethod, 'wechat');
+});
+
+test('one phone authorization event authenticates the current WeChat identity before binding once and completes entry', async t => {
+  let ctx; const order = [];
+  const fresh = { id: 'current-wechat-member', nickname: '微信用户', balance: 0, points: 0 };
+  ctx = setup(t, {
+    wechatLoginWithProfile: async () => { order.push('wechat-login'); return { token: 'fresh-wechat-token', user: fresh }; },
+    bindWechatPhone: async code => { order.push('phone-bind'); assert.equal(code, 'single-phone-code'); assert.equal(ctx.session.userId, fresh.id); assert.equal(ctx.session.token, 'fresh-wechat-token'); assert.equal(ctx.session.loginMethod, 'wechat'); return { ...fresh, phone: '13800138000' }; },
+    updateMyProfile: async () => { throw Error('must not use unverified manual phone'); },
+  }, { id: 'stale-cached-member', balance: 500, points: 99 });
+  authorize(ctx); ctx.session.loginMethod = 'password';
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'needsPhoneSetup', 'savingPhone']);
+  await page.handleWechatPhone({ detail: { code: 'single-phone-code' } });
+  assert.deepEqual(order, ['wechat-login', 'phone-bind']);
+  assert.equal(page.needsPhoneSetup.value, false); assert.equal(page.savingPhone.value, false);
+  assert.equal(ctx.load('utils/member.ts').isMemberEntryReady(), true);
+  assert.equal(ctx.session.profile.balance, 0); assert.equal(ctx.session.profile.points, 0);
+  assert.equal(ctx.notices.at(-1).title, '登录成功'); assert.equal(ctx.payloads.length, 0);
+});
+
+test('cancelled phone authorization and missing legal consent never create a WeChat account or bind a phone', async t => {
+  let login = 0, bind = 0;
+  const ctx = setup(t, { wechatLoginWithProfile: async () => { login++; }, bindWechatPhone: async () => { bind++; } });
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'legalAccepted']);
+  await page.handleWechatPhone({ detail: { code: 'not-authorized-without-consent' } });
+  authorize(ctx); page.legalAccepted.value = true;
+  await page.handleWechatPhone({ detail: { errMsg: 'getPhoneNumber:fail user deny' } });
+  assert.equal(login, 0); assert.equal(bind, 0); assert.equal(ctx.session.userId, '');
+  assert.match(ctx.notices.at(-1).content, /账号密码登录/);
+});
+
+test('phone binding is never attempted when WeChat authentication fails', async t => {
+  let bind = 0;
+  const ctx = setup(t, { wechatLoginWithProfile: async () => { throw Error('微信身份验证失败'); }, bindWechatPhone: async () => { bind++; } });
+  authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'savingPhone']);
+  await page.handleWechatPhone({ detail: { code: 'unconsumed-phone-code' } });
+  assert.equal(bind, 0); assert.equal(ctx.session.userId, ''); assert.equal(page.savingPhone.value, false);
+  assert.match(ctx.notices.at(-1).content, /微信身份验证失败/);
+});
+
+test('duplicate phone callbacks and password submission cannot race a pending WeChat login', async t => {
+  let finishLogin; let bind = 0, password = 0;
+  const fresh = { id: 'fresh-wechat-member', balance: 0, points: 0 };
+  const ctx = setup(t, {
+    wechatLoginWithProfile: () => new Promise(resolve => { finishLogin = resolve; }),
+    bindWechatPhone: async () => { bind++; return { ...fresh, phone: '13800138000' }; },
+    memberPasswordLogin: async () => { password++; },
+  });
+  authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'handlePasswordLogin', 'loginUsername', 'loginPassword']);
+  page.loginUsername.value = 'issued_account'; page.loginPassword.value = 'PasswordForTestOnly';
+  const first = page.handleWechatPhone({ detail: { code: 'first-phone-code' } }); await new Promise(setImmediate);
+  await page.handleWechatPhone({ detail: { code: 'duplicate-phone-code' } }); await page.handlePasswordLogin();
+  finishLogin({ token: 'fresh-token', user: fresh }); await first;
+  assert.equal(bind, 1); assert.equal(password, 0);
+});
+
+test('a failed one-time phone request is not retried automatically; another deliberate tap uses a new code', async t => {
+  const codes = [];
+  const ctx = setup(t, { bindWechatPhone: async code => { codes.push(code); throw Error('网络连接不稳定'); } }); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone']);
+  await page.handleWechatPhone({ detail: { code: 'first-one-time-code' } }); assert.deepEqual(codes, ['first-one-time-code']);
+  await page.handleWechatPhone({ detail: { code: 'new-one-time-code' } }); assert.deepEqual(codes, ['first-one-time-code', 'new-one-time-code']);
+});
+
+test('guest booking returns to the combined login button even with previous legal consent, without creating a partial account', async t => {
+  let login = 0;
+  const ctx = setup(t, { wechatLoginWithProfile: async () => { login++; throw Error('unexpected automatic login'); } });
+  const member = authorize(ctx);
+  assert.equal(await member.ensureReadyMemberAccess(), false);
+  assert.equal(ctx.navigation.at(-1), '/pages/index/index'); assert.equal(login, 0); assert.equal(ctx.session.userId, '');
+});
+
+test('first phone registration and later logins never open avatar or nickname setup automatically', async t => {
+  const ctx = setup(t); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone']);
+  await page.handleWechatPhone({ detail: { code: 'first-phone-code' } });
+  assert.equal(ctx.navigation.length, 0);
+  assert.equal(ctx.load('utils/member.ts').isMemberEntryReady(), true);
+  const count = ctx.navigation.length;
+  await page.handleWechatPhone({ detail: { code: 'later-phone-code' } });
+  assert.equal(ctx.navigation.length, count);
+  assert.equal(ctx.session.profile.nickname, '微信用户'); assert.equal(ctx.payloads.length, 0);
+});
+
+test('existing custom avatar and nickname are preserved and never replaced by a new-user prompt', async t => {
+  const existing = { ...linked, avatarUrl: '/uploads/old-avatar.jpg', nickname: '原会员昵称' };
+  const ctx = setup(t, {}, existing); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone']);
+  await page.handleWechatPhone({ detail: { code: 'existing-phone-code' } });
+  assert.equal(ctx.navigation.length, 0); assert.equal(ctx.session.profile.avatarUrl, existing.avatarUrl);
+  assert.equal(ctx.session.profile.nickname, existing.nickname); assert.equal(ctx.session.profile.balance, existing.balance); assert.equal(ctx.session.profile.points, existing.points);
+});
+
+test('choosing an avatar and saving nickname persist as the same member profile without changing phone or funds', async t => {
+  let stored = { ...linked, avatarUrl: '', nickname: '微信用户' };
+  const writes = [];
+  const ctx = setup(t, {
+    getMyCachedProfile: async () => stored,
+    uploadMyAvatar: async file => { writes.push(['avatar', file]); stored = { ...stored, avatarUrl: '/uploads/chosen-avatar.jpg' }; return stored; },
+    updateMyProfile: async payload => { writes.push(['profile', { ...payload }]); stored = { ...stored, ...payload }; return stored; },
+  }, stored); authorize(ctx);
+  const name = 'pages/account/account.vue';
+  const page = ctx.load(name, ['handleWechatAvatar', 'saveNickname', 'nickname']);
+  ctx.hooks.get(name + ':load')({ setup: '1' });
+  await ctx.hooks.get(name)[0]();
+  assert.equal(page.nickname.value, ''); assert.equal(writes.length, 0);
+  await page.handleWechatAvatar({ detail: { avatarUrl: 'wxfile://user-chosen-avatar.jpg' } });
+  assert.equal(ctx.session.profile.avatarUrl, '/uploads/chosen-avatar.jpg');
+  await page.saveNickname({ detail: { value: { nickname: ' 用户选用的微信昵称 ' } } });
+  assert.deepEqual(writes, [['avatar', 'wxfile://user-chosen-avatar.jpg'], ['profile', { nickname: '用户选用的微信昵称' }]]);
+  assert.equal(ctx.session.profile.id, linked.id); assert.equal(ctx.session.profile.phone, linked.phone);
+  assert.equal(ctx.session.profile.balance, linked.balance); assert.equal(ctx.session.profile.points, linked.points);
+  assert.equal(ctx.session.profile.pospal.customerNumber, linked.pospal.customerNumber);
+  assert.equal(ctx.navigation.at(-1), '/pages/index/index');
+});
+
+test('profile setup can be skipped without submitting avatar or nickname and without losing member access', async t => {
+  let writes = 0;
+  const ctx = setup(t, { uploadMyAvatar: async () => { writes++; }, updateMyProfile: async () => { writes++; } }, { ...linked, avatarUrl: '', nickname: '微信用户' });
+  const member = authorize(ctx);
+  const page = ctx.load('pages/account/account.vue', ['goHome']);
+  page.goHome();
+  assert.equal(ctx.navigation.at(-1), '/pages/index/index'); assert.equal(writes, 0); assert.equal(member.isMemberEntryReady(), true);
+  assert.equal(ctx.session.profile.phone, linked.phone); assert.equal(ctx.session.profile.balance, linked.balance);
+});
+
+test('avatar upload or nickname save failure stays on the profile page and preserves the original member data', async t => {
+  const initial = { ...linked, nickname: '原昵称', avatarUrl: '/uploads/original.jpg' };
+  const ctx = setup(t, { uploadMyAvatar: async () => { throw Error('头像保存失败'); }, updateMyProfile: async () => { throw Error('昵称保存失败'); } }, initial); authorize(ctx);
+  const name = 'pages/account/account.vue';
+  const page = ctx.load(name, ['handleWechatAvatar', 'saveNickname', 'avatarSrc']); ctx.hooks.get(name + ':load')({ setup: '1' });
+  await ctx.hooks.get(name)[0]();
+  await page.handleWechatAvatar({ detail: { avatarUrl: 'wxfile://new-avatar.jpg' } });
+  assert.equal(page.avatarSrc.value, '/uploads/original.jpg');
+  await page.saveNickname({ detail: { value: { nickname: '新昵称' } } });
+  assert.equal(ctx.navigation.length, 0); assert.equal(ctx.session.profile.nickname, initial.nickname);
+  assert.equal(ctx.session.profile.avatarUrl, initial.avatarUrl); assert.equal(ctx.session.profile.balance, initial.balance); assert.equal(ctx.session.profile.phone, initial.phone);
+});
+
+test('the server-generated nickname is displayed immediately after phone login without interrupting entry', async t => {
+  const profile = { id: 'generated-name-member', nickname: '月光会员A7C29F', avatarUrl: '', balance: 0, points: 0 };
+  const ctx = setup(t, {
+    wechatLoginWithProfile: async () => ({ token: 'generated-member-token', user: profile }),
+    bindWechatPhone: async () => ({ ...profile, phone: '13988889999' }),
+  }); authorize(ctx);
+  const page = ctx.load('pages/index/index.vue', ['handleWechatPhone', 'welcomeText', 'openProfileSetup']);
+  await page.handleWechatPhone({ detail: { code: 'generated-name-phone-code' } });
+  assert.equal(page.welcomeText.value, profile.nickname); assert.equal(ctx.navigation.length, 0);
+  assert.equal(ctx.load('utils/member.ts').isMemberEntryReady(), true);
+  page.openProfileSetup(); assert.equal(ctx.navigation.at(-1), '/pages/account/account?setup=1');
 });

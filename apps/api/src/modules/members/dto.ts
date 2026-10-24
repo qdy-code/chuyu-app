@@ -42,6 +42,15 @@ export class CreateMemberLinkCodeDto {
   phone!: string;
 }
 
+export class ConfirmPhoneRecoveryDto {
+  @IsString()
+  @Matches(/^\d{8}$/)
+  code!: string;
+
+  @IsIn([true])
+  confirmed!: true;
+}
+
 export class CreateMemberMessageDto implements CreateMemberMessageRequest {
   @IsString()
   @IsNotEmpty()

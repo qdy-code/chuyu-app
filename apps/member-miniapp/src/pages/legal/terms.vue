@@ -29,10 +29,10 @@
 
     <view class="card">
       <text class="section-title">三、账号与登录</text>
-      <text class="bullet">• 你通过微信账号一键登录，无需另设密码。</text>
+      <text class="bullet">• 可使用微信登录；已由门店开通账号的会员，也可选择账号密码登录。</text>
       <text class="bullet">• 一个微信账号对应一个会员档案，不可转让。</text>
-      <text class="bullet">• 首次使用需主动填写手机号，用于门店确认预约和会员资料。</text>
-      <text class="bullet">• 你应妥善保管微信账号，因账号泄露造成的损失由你自行承担。</text>
+      <text class="bullet">• 浏览作品无需登录。微信会员完善手机号用于门店确认预约和会员资料；账号密码登录不要求微信手机号授权，关联门店会员仍需本人微信验证及门店核验。</text>
+      <text class="bullet">• 你应妥善保管微信账号及登录密码，因账号泄露造成的损失由你自行承担。</text>
     </view>
 
     <view class="card">

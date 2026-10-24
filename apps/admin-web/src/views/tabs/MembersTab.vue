@@ -487,7 +487,7 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
         { size: 8, wrap: false },
         {
           default: () => [
-            ...(row.openId.startsWith('admin-created-') ? [h(NButton, {
+            ...(row.phone ? [h(NButton, {
               size: 'small', secondary: true, onClick: () => openLinkMember(row),
             }, { icon: () => h(NIcon, null, { default: () => h(Link2) }), default: () => '关联微信' })] : []),
             h(NButton, {
@@ -628,13 +628,14 @@ function bulkCheckPending() {
     <NModal v-model:show="linkModalOpen" preset="card" title="关联微信会员" style="width: 440px">
       <NSpace v-if="linkingMember" vertical :size="14">
         <div>当前会员：{{ linkingMember.nickname }}（{{ linkingMember.id }}）</div>
+        <div class="text-sm">仅更换微信登录绑定，原会员号、余额、积分和历史记录保持不变；原微信登录会失效。</div>
         <NFormItem label="顾客关联码">
           <NInput v-model:value="linkForm.code" maxlength="8" placeholder="顾客小程序显示的 8 位关联码" />
         </NFormItem>
         <NFormItem label="预留手机号">
           <NInput v-model:value="linkForm.phone" maxlength="11" placeholder="与后台会员资料一致的手机号" />
         </NFormItem>
-        <NCheckbox v-model:checked="linkForm.verified">我已核对顾客身份及手机号</NCheckbox>
+        <NCheckbox v-model:checked="linkForm.verified">我已核对顾客本人身份、预留手机号及原会员记录，确认更换微信绑定</NCheckbox>
         <NSpace justify="end">
           <NButton @click="linkModalOpen = false">取消</NButton>
           <NButton type="primary" :loading="linking" @click="confirmWechatLink">确认关联</NButton>
