@@ -1,0 +1,22 @@
+/* Scoped to the new detail experience; original Moonisle palette. */
+.detail-theme {
+  --detail-canvas: #f7f4ef;
+  --detail-surface: #fff;
+  --detail-subtle: #edf2f4;
+  --detail-text: #111827;
+  --detail-muted: #667085;
+  --detail-primary: #3d4652;
+  --detail-on-primary: #f7f4ef;
+  --detail-border: #d0d5dd;
+  --detail-accent-surface: #e6eeeb;
+  --detail-space: 8px;
+  --detail-radius: 16px;
+  --detail-press: 100ms;
+  --detail-change: 140ms;
+  color: var(--detail-text);
+  background: var(--detail-canvas);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-theme { --detail-press: 0ms; --detail-change: 0ms; }
+}

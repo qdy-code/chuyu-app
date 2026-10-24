@@ -1,0 +1,14 @@
+{
+  "endpoint": "https://chuy.shop/api/members/catalog/NAIL/products",
+  "product": {
+    "id": "nail-prod-14b1ee46-4082-42a5-84ad-23da6b495fc7",
+    "name": "星点法式",
+    "description": "裸粉珠光，点缀星星与浅蓝法式。",
+    "referencePrice": null,
+    "images": [
+      "/uploads/1792394359017-90a5e7b6-9619-45fb-969d-a4097a53f617-feef5474-0140-4545-bc14-d332a5a2e835.jpg"
+    ],
+    "isActive": true,
+    "updatedAt": "2026-10-19T07:27:07.963Z"
+  }
+}

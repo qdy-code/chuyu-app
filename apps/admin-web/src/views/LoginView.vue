@@ -10,7 +10,7 @@ import {
   NSpace,
   useMessage,
 } from 'naive-ui';
-import { LockKeyhole, ShieldCheck } from 'lucide-vue-next';
+import { LockKeyhole, ShieldCheck } from '@lucide/vue';
 import { useAuth } from '@/composables/useAuth';
 
 const { authError, login } = useAuth();
@@ -28,8 +28,8 @@ async function handleLogin() {
   try {
     await login(password.value);
     password.value = '';
-  } catch {
-    message.error('密码错误，请重试');
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '登录失败，请重试');
   } finally {
     loading.value = false;
   }
@@ -50,7 +50,7 @@ async function handleLogin() {
           <ShieldCheck :size="22" />
         </div>
         <div>
-          <h1 class="brand-title">初屿会员 · 管理后台</h1>
+          <h1 class="brand-title">Moonisle</h1>
           <p class="brand-subtitle">门店运营、会员维护、预约排期</p>
         </div>
       </div>

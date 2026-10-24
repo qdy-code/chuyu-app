@@ -1,17 +1,18 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
       <text class="header-title">用户服务协议</text>
-      <text class="header-desc">最后更新日期：2026-05-28</text>
+      <text class="header-desc">最后更新日期：2026-07-12</text>
     </view>
 
     <view class="card">
       <text class="section-title">一、协议主体</text>
       <text class="para">
-        本协议是你与"初屿会员"小程序（以下简称"本小程序"）运营者之间就使用本小程序服务所达成的协议。
+        本协议是你与"月光石屿MOONISLE"小程序（以下简称"本小程序"）运营者之间就使用本小程序服务所达成的协议。
       </text>
       <text class="para">
-        在你使用本小程序前，请仔细阅读本协议。继续使用即视为你已阅读、理解并同意本协议全部条款。
+        在你使用会员功能前，请仔细阅读本协议。你在登录页主动勾选并点击"登录"，表示你已阅读、理解并同意本协议。
       </text>
     </view>
 
@@ -19,17 +20,19 @@
       <text class="section-title">二、服务内容</text>
       <text class="para">本小程序面向门店会员提供以下基础服务：</text>
       <text class="bullet">• 会员卡查看</text>
-      <text class="bullet">• 到店预约提交</text>
+      <text class="bullet">• 美甲、饰品和鲜花产品分类展示及参考价查看</text>
+      <text class="bullet">• 美甲到店、饰品预留和鲜花取花预约</text>
       <text class="bullet">• 历史消费记录查询</text>
       <text class="bullet">• 会员等级与折扣展示</text>
-      <text class="para">本小程序不进行任何线上交易、不收取费用、不展示广告。</text>
+      <text class="para">产品参考价仅供展示，实际服务内容和金额以门店确认为准。本小程序不提供购物车、线上下单或线上支付。</text>
     </view>
 
     <view class="card">
       <text class="section-title">三、账号与登录</text>
-      <text class="bullet">• 你通过微信账号一键登录，无需另设密码。</text>
+      <text class="bullet">• 可使用微信登录；已由门店开通账号的会员，也可选择账号密码登录。</text>
       <text class="bullet">• 一个微信账号对应一个会员档案，不可转让。</text>
-      <text class="bullet">• 你应妥善保管微信账号，因账号泄露造成的损失由你自行承担。</text>
+      <text class="bullet">• 浏览作品无需登录。微信会员完善手机号用于门店确认预约和会员资料；账号密码登录不要求微信手机号授权，关联门店会员仍需本人微信验证及门店核验。</text>
+      <text class="bullet">• 你应妥善保管微信账号及登录密码，因账号泄露造成的损失由你自行承担。</text>
     </view>
 
     <view class="card">
@@ -44,7 +47,7 @@
     <view class="card">
       <text class="section-title">五、隐私保护</text>
       <text class="para">
-        我们尊重并保护你的个人信息。具体条款请阅读《隐私政策》。继续使用本小程序即视为你同意《隐私政策》内容。
+        我们尊重并保护你的个人信息。具体条款请阅读《隐私政策》，并由你在登录页主动勾选确认。
       </text>
     </view>
 
@@ -63,25 +66,43 @@
     <view class="card">
       <text class="section-title">八、协议变更</text>
       <text class="para">
-        运营者有权根据法律法规或业务需要修订本协议，修订后会在小程序内提示。继续使用即视为接受修订后的协议。
+        运营者有权根据法律法规或业务需要修订本协议，修订后会在小程序内提示；如需继续使用会员功能，将再次请你主动确认。
       </text>
     </view>
 
-    <view class="footer">
+    <view v-if="icpRecord" class="footer">
       <text class="footer-line">{{ icpRecord }}</text>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-const icpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined) || '陕ICP备XXXXXXXX号';
+const rawIcpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined)?.trim();
+const icpRecord = rawIcpRecord && !/X{4,}|请填写|示例/i.test(rawIcpRecord) ? rawIcpRecord : undefined;
 </script>
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .header-card,
@@ -93,8 +114,8 @@ const icpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined) || '�
 }
 
 .header-card {
-  background: linear-gradient(135deg, #cf2c2c, #9b1717);
-  color: #fff;
+  background: #edf2f4;
+  color: #3d4652;
   margin-bottom: 22rpx;
 }
 
@@ -107,7 +128,7 @@ const icpRecord = (import.meta.env.VITE_ICP_RECORD as string | undefined) || '�
 .header-desc {
   display: block;
   margin-top: 10rpx;
-  color: rgba(255, 255, 255, 0.82);
+  color: #6f7f8a;
   font-size: 24rpx;
 }
 

@@ -1,0 +1,22 @@
+{
+  "reviewer": "Codex image inspection",
+  "verdict": "concept-candidate-with-notes",
+  "approved_for_publication": false,
+  "checks": {
+    "brand_composition": "pass",
+    "subject_details": "pass",
+    "artifacts": "pass",
+    "reference_fidelity": "not-applicable",
+    "crop_usability": "fail"
+  },
+  "observations": [
+    "三朵奶油白郁金香，绿叶、灰蓝/奶油纸和米白缎带清楚；方图整体完整。",
+    "横向702:430列表中央裁切会截断包装和下部花茎，并可能影响最高花头，不能直接作列表完整主图。",
+    "已为后续批次补充list构图预设；本张保留为方形概念候选。"
+  ],
+  "scope": "Generated image visual inspection; no real product fidelity or mini-program acceptance verified",
+  "actual_dimensions": {
+    "width": 1254,
+    "height": 1254
+  }
+}

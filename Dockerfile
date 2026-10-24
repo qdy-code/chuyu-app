@@ -1,4 +1,6 @@
-FROM node:20-alpine AS base
+FROM docker.m.daocloud.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS base
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com \
+    npm_config_registry=https://registry.npmmirror.com
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 

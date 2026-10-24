@@ -1,0 +1,22 @@
+FROM docker.m.daocloud.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS build
+
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com \
+    npm_config_registry=https://registry.npmmirror.com
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/admin-web/package.json apps/admin-web/
+RUN pnpm install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY apps/admin-web apps/admin-web
+COPY deploy/admin-web.env.production apps/admin-web/.env.production
+RUN pnpm --filter @member-platform/shared build \
+  && pnpm --filter @member-platform/admin-web build:release
+
+FROM docker.m.daocloud.io/library/caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/apps/admin-web/dist /srv/admin

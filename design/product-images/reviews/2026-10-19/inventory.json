@@ -1,0 +1,38 @@
+[
+  {
+    "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/inputs/nail-star-b2bdb426/source.jpg",
+    "bytes": 440072,
+    "sha256": "6242e1b995f98dd2a31a8fe6edcb14a321c783aa122f0397d77dea7a880e0d5a",
+    "dimensions": [
+      1080,
+      1374
+    ]
+  },
+  {
+    "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/nail-star-photo-opt-v1/nail-star-photo-opt-v1/original.png",
+    "bytes": 1795619,
+    "sha256": "c028b0e308769760ae4e8a169d1af6468ed06864c5a4b7ad8dd8a56c621b6e1e",
+    "dimensions": [
+      1254,
+      1254
+    ]
+  },
+  {
+    "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/nail-star-photo-opt-r2/nail-star-photo-opt-r2/original.png",
+    "bytes": 1790151,
+    "sha256": "035642129b83af80f5640046dbbcd79c20a8932194aa080f0ec3ff57b08a3f45",
+    "dimensions": [
+      1254,
+      1254
+    ]
+  },
+  {
+    "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/concept-pilot-v1/nail-moonmist-concept-v1/original.png",
+    "bytes": 1883004,
+    "sha256": "69337fec944e038644889199b04cd4e34f0336a1a9a9d14c2c912e0328c8b43b",
+    "dimensions": [
+      1254,
+      1254
+    ]
+  }
+]

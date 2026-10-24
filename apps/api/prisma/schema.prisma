@@ -11,6 +11,8 @@ model Member {
   id           String  @id
   openId       String  @unique
   phone        String? @unique
+  phoneVerifiedAt DateTime?
+  authVersion  Int @default(0)
   nickname     String
   remark       String?
   avatarUrl    String
@@ -20,8 +22,25 @@ model Member {
   discountRate Float
   balance      Float
   points       Float
+  accountIdChangedAt DateTime?
+  deletedAt    DateTime?
+  pospalLink   PospalMemberLink?
+  pospalSync   PospalMemberSync?
+  credential   MemberCredential?
 
   @@index([levelId])
+}
+
+model MemberCredential {
+  memberId String @id
+  username String @unique
+  passwordHash String
+  enabled Boolean @default(true)
+  failedAttempts Int @default(0)
+  lockedUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model MemberLevel {
@@ -29,6 +48,34 @@ model MemberLevel {
   name         String
   minPoints    Int
   discountRate Float
+}
+
+model PospalMemberLink {
+  memberId       String   @id
+  customerUid    String   @unique
+  customerNumber String
+  account        String
+  createdAt      DateTime @default(now())
+  lastSyncedAt   DateTime?
+  member         Member   @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model PospalMemberSync {
+  memberId String @id
+  account String
+  customerNumber String @unique
+  customerUid String?
+  state String @default("PENDING")
+  revision Int @default(1)
+  attempts Int @default(0)
+  createAttemptedAt DateTime?
+  leaseUntil DateTime?
+  nextAttemptAt DateTime @default(now())
+  lastError String?
+  updatedAt DateTime @updatedAt
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([state, nextAttemptAt])
 }
 
 model RechargeOrder {
@@ -58,9 +105,46 @@ model ConsumptionOrder {
   remark        String?
   createdBy     String
   createdAt     DateTime
+  voidedAt      DateTime?
+  voidedBy      String?
 
   @@index([userId])
   @@index([orderNo])
+}
+
+model MemberLinkRequest {
+  userId         String   @id
+  targetMemberId String
+  codeHash       String   @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  verifiedPhoneHash String?
+  sourceAuthVersion Int?
+  targetAuthVersion Int?
+  selfServiceAllowed Boolean @default(false)
+
+  @@index([targetMemberId])
+}
+
+model MutationReceipt {
+  id          String   @id
+  payloadHash String
+  result      Json
+  createdAt   DateTime @default(now())
+}
+
+model MemberMessage {
+  id        String   @id
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+  reply     String?
+  repliedAt DateTime?
+  repliedBy String?
+
+  @@index([userId, createdAt])
+  @@index([readAt, createdAt])
 }
 
 model ProductType {
@@ -72,10 +156,98 @@ model ProductType {
   @@index([sortOrder])
 }
 
+model NailCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model AccessoryCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model FlowerCategory {
+  id        String   @id
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime
+
+  @@index([sortOrder])
+}
+
+model NailProduct {
+  id             String   @id
+  categoryId     String?
+  categoryName   String?
+  name           String
+  description    String?
+  referencePrice Float?
+  images         String[] @default([])
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+model AccessoryProduct {
+  id                    String   @id
+  categoryId            String?
+  categoryName          String?
+  name                  String
+  description           String?
+  referencePrice        Float?
+  images                String[] @default([])
+  sortOrder             Int      @default(0)
+  isActive              Boolean  @default(true)
+  reservedByUserId      String?
+  reservedAppointmentId String?
+  reservedAt            DateTime?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@index([reservedByUserId])
+}
+
+model FlowerProduct {
+  id             String   @id
+  categoryId     String?
+  categoryName   String?
+  name           String
+  description    String?
+  referencePrice Float?
+  images         String[] @default([])
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  @@index([categoryId])
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
 model Appointment {
   id              String   @id
   userId          String
   memberNickname  String
+  businessType    String   @default("NAIL")
+  productId       String?
+  productName     String?
   appointmentDate String
   startTime       String
   endTime         String
@@ -86,8 +258,23 @@ model Appointment {
   updatedAt       DateTime
 
   @@index([userId])
+  @@index([businessType])
+  @@index([productId])
   @@index([appointmentDate])
   @@index([status])
+}
+
+model AppointmentUnavailableDate {
+  id              String   @id
+  appointmentDate String
+  businessType    String
+  reason          String?
+  createdAt       DateTime
+  updatedAt       DateTime
+
+  @@unique([appointmentDate, businessType])
+  @@index([appointmentDate])
+  @@index([businessType])
 }
 
 model BalanceLedger {
@@ -99,6 +286,20 @@ model BalanceLedger {
   createdAt      DateTime
 
   @@index([userId])
+}
+
+model PointsLedger {
+  id             String   @id
+  userId         String
+  changePoints   Float
+  beforePoints   Float
+  afterPoints    Float
+  reason         String
+  relatedOrderId String?
+  sourceAuditId  String?  @unique
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model AuditLog {

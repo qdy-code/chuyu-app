@@ -1,0 +1,17 @@
+{
+  "reviewer": "Codex visual comparison with supplied original",
+  "verdict": "needs-revision",
+  "approved_for_publication": false,
+  "checks": {
+    "brand_composition": "pass",
+    "subject_details": "fail",
+    "artifacts": "pass",
+    "reference_fidelity": "fail",
+    "crop_usability": "pending"
+  },
+  "observations": [
+    "背景已变为柔和奶油白/灰蓝，原手势和袖口大体保持。",
+    "上方星星甲面新增原照没有的白色小星；珠光颗粒被增强。",
+    "已进行一次针对性修正；此版不作为最终实物保真图。"
+  ]
+}

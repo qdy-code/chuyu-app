@@ -1,5 +1,12 @@
-import { IsDateString, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
-import { BindWechatPhoneRequest, CreateAppointmentRequest, UpdateMyProfileRequest } from '@member-platform/shared';
+import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  BUSINESS_TYPE,
+  BindWechatPhoneRequest,
+  BusinessType,
+  CreateAppointmentRequest,
+  UpdateMyProfileRequest,
+  CreateMemberMessageRequest,
+} from '@member-platform/shared';
 
 export class UpdateMyProfileDto implements UpdateMyProfileRequest {
   @IsString()
@@ -7,9 +14,16 @@ export class UpdateMyProfileDto implements UpdateMyProfileRequest {
   @IsOptional()
   phone?: string;
 
-  @IsDateString()
+  @Matches(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, { message: 'birthday must use MM-DD format' })
   @IsOptional()
   birthday?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  @IsOptional()
+  nickname?: string;
+
 }
 
 export class BindWechatPhoneDto implements BindWechatPhoneRequest {
@@ -23,7 +37,41 @@ export class BindWechatPhoneDto implements BindWechatPhoneRequest {
   mockPhone?: string;
 }
 
+export class CreateMemberLinkCodeDto {
+  @Matches(/^1[3-9]\d{9}$/)
+  phone!: string;
+}
+
+export class ConfirmPhoneRecoveryDto {
+  @IsString()
+  @Matches(/^\d{8}$/)
+  code!: string;
+
+  @IsIn([true])
+  confirmed!: true;
+}
+
+export class CreateMemberMessageDto implements CreateMemberMessageRequest {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  content!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  requestId!: string;
+}
+
 export class CreateAppointmentDto implements CreateAppointmentRequest {
+  @IsIn(Object.values(BUSINESS_TYPE))
+  @IsOptional()
+  businessType?: BusinessType;
+
+  @IsString()
+  @IsOptional()
+  productId?: string;
+
   @IsDateString()
   appointmentDate!: string;
 
@@ -37,6 +85,7 @@ export class CreateAppointmentDto implements CreateAppointmentRequest {
   endTime?: string;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   remark?: string;
 }

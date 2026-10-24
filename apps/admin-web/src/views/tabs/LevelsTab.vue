@@ -13,7 +13,7 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui';
-import { PlusCircle, Save, Trash2 } from 'lucide-vue-next';
+import { PlusCircle, Save, Trash2 } from '@lucide/vue';
 import type { MemberLevel } from '@member-platform/shared';
 import { api } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';

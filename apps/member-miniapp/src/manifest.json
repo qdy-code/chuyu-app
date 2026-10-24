@@ -1,11 +1,14 @@
 {
-  "name": "初屿会员",
+  "name": "月光石屿MOONISLE",
   "appid": "__UNI__CHUYU_MEMBER__",
-  "description": "初屿会员用户端",
-  "versionName": "0.4.0",
-  "versionCode": "400",
+  "description": "月光石屿MOONISLE 用户端",
+  "versionName": "1.3.24",
+  "versionCode": "10324",
+  "uniStatistics": {
+    "enable": false
+  },
   "mp-weixin": {
-    "appid": "wx1911c030d37537ff",
+    "appid": "wx1cf2caed662f562a",
     "lazyCodeLoading": "requiredComponents",
     "setting": {
       "urlCheck": true,

@@ -1,10 +1,20 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="header-card">
+      <image class="header-bg" src="/static/brand/consumption-record-bg.jpg" mode="aspectFill" />
       <text class="header-title">消费记录</text>
+      <text v-if="sessionState.profile?.pospal" class="record-meta">显示最近 100 条收银记录，包含退货与退款</text>
+      <text v-if="loadedAt" class="record-meta">记录读取时间：{{ formatRecordTime(loadedAt) }}，到店消费后可手动刷新</text>
+      <button class="refresh-records" :disabled="loading" @click="refresh">{{ loading ? '加载中...' : '刷新消费记录' }}</button>
     </view>
 
-    <view v-if="records.length === 0" class="empty-card">
+    <view v-if="loading" class="empty-card">正在加载消费记录...</view>
+    <view v-else-if="errorMessage" class="empty-card">
+      <text>{{ errorMessage }}</text>
+      <button @click="refresh">重新加载</button>
+    </view>
+    <view v-else-if="loaded && records.length === 0" class="empty-card">
       <text class="empty-title">暂无消费记录</text>
     </view>
 
@@ -14,12 +24,15 @@
           <text class="record-title">{{ item.title }}</text>
           <text class="record-meta">订单号：{{ item.orderNo }}</text>
         </view>
-        <text class="price">¥{{ formatMoney(item.finalPrice) }}</text>
+        <view class="record-amount" :class="{ refund: isRefund(item) }">
+          <text class="amount-label">{{ isRefund(item) ? '退款金额' : '消费金额' }}</text>
+          <text class="price">¥{{ formatMoney(Math.abs(item.finalPrice)) }}</text>
+        </view>
       </view>
       <view class="detail-grid">
         <text>类型：{{ item.productType || '未填写' }}</text>
-        <text>原价：¥{{ formatMoney(item.originalPrice) }}</text>
-        <text>折扣：{{ discountText(item.discountRate) }}</text>
+        <text v-if="item.source !== 'POSPAL'">原价：¥{{ formatMoney(item.originalPrice) }}</text>
+        <text v-if="item.source !== 'POSPAL'">折扣：{{ discountText(item.discountRate) }}</text>
         <text>日期：{{ item.orderDate }}</text>
       </view>
       <view v-if="item.effectImages.length > 0" class="image-list">
@@ -37,21 +50,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { ConsumptionOrder } from '@member-platform/shared';
 import { listMyConsumptions, toAbsoluteImageUrl } from '@/utils/api';
+import { discountText, formatMoney } from '@/utils/member';
+import { MEMBER_RECORD_CACHE_MS, useMemberRecords } from '@/utils/use-member-records';
 import { sessionState } from '@/store/session';
-import { discountText, formatMoney, refreshSessionProfile } from '@/utils/member';
 
-const records = ref<ConsumptionOrder[]>([]);
+const { records, loading, loaded, loadedAt, errorMessage, load, refresh } = useMemberRecords<ConsumptionOrder>(listMyConsumptions, { cacheMs: MEMBER_RECORD_CACHE_MS });
 
-async function refresh() {
-  await refreshSessionProfile();
-  if (!sessionState.userId) {
-    return;
-  }
-  records.value = await listMyConsumptions();
+function formatRecordTime(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', { hour12: false });
+}
+
+function isRefund(item: ConsumptionOrder): boolean {
+  return item.finalPrice < 0 || (item.source === 'POSPAL' && item.productType === '退货 / 退款');
 }
 
 function previewImages(images: string[], current: string) {
@@ -61,14 +74,31 @@ function previewImages(images: string[], current: string) {
   });
 }
 
-onShow(refresh);
+onShow(load);
 </script>
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .header-card,
@@ -81,9 +111,27 @@ onShow(refresh);
 }
 
 .header-card {
-  background: linear-gradient(135deg, #1f2937, #475467);
-  color: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 168rpx;
+  background: #edf2f4;
+  color: #3d4652;
 }
+
+.header-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.header-title {
+  position: relative;
+  z-index: 1;
+}
+
+.refresh-records { position: relative; margin: 18rpx 0 0; border-radius: 999rpx; background: #fff; color: #3d4652; font-size: 25rpx; }
+.refresh-records::after { border: 0; }
 
 .header-title,
 .empty-title {
@@ -123,10 +171,14 @@ onShow(refresh);
 }
 
 .price {
-  color: #cf2c2c;
+  color: #3d4652;
   font-size: 32rpx;
   font-weight: 900;
 }
+
+.record-amount { flex-shrink: 0; text-align: right; }
+.amount-label { display: block; margin-bottom: 8rpx; color: #667085; font-size: 22rpx; }
+.record-amount.refund .price, .record-amount.refund .amount-label { color: #527d68; }
 
 .detail-grid {
   margin-top: 20rpx;

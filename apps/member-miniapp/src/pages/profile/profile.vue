@@ -1,5 +1,6 @@
 <template>
   <view class="page">
+    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
     <view class="card">
       <text class="title">账户资料已拆分</text>
       
@@ -16,9 +17,26 @@ function goAccount() {
 
 <style scoped>
 .page {
+  position: relative;
   min-height: 100vh;
+  overflow: hidden;
   padding: 24rpx;
-  background: #f7f4ef;
+  background: #f6f3ea;
+}
+
+.page-bg {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.page > view {
+  position: relative;
+  z-index: 1;
 }
 
 .card {
@@ -40,8 +58,8 @@ function goAccount() {
 .primary-btn {
   margin-top: 28rpx;
   border-radius: 999rpx;
-  background: #d72d2d;
-  color: #fff;
+  background: #3d4652;
+  color: #f7f4ea;
   font-weight: 800;
 }
 </style>

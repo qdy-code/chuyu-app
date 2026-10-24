@@ -7,24 +7,58 @@ import {
   IsOptional,
   IsString,
   IsIn,
+  IsBoolean,
+  IsNotEmpty,
+  IsUUID,
+  Equals,
   Matches,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator';
 import {
   APPOINTMENT_STATUS,
+  AdminRechargeRequest,
+  AppointmentAvailabilityScope,
   AppointmentStatus,
+  BUSINESS_TYPE,
+  BusinessType,
   CreateAdminAppointmentRequest,
+  CreateAppointmentUnavailableDateRequest,
+  CreateCatalogProductRequest,
   CreateConsumptionOrderRequest,
   CreateMemberRequest,
   CreateMemberLevelRequest,
+  CreateProductCategoryRequest,
   CreateProductTypeRequest,
   RejectRechargeRequest,
   UpdateAppointmentRequest,
+  UpdateCatalogProductRequest,
   UpdateMemberRequest,
   UpdateMemberLevelRequest,
+  UpdateProductCategoryRequest,
   UpdateProductTypeRequest,
+  ConfirmMemberLinkRequest,
+  ReplyMemberMessageRequest,
 } from '@member-platform/shared';
+
+export class ConfirmMemberLinkDto implements ConfirmMemberLinkRequest {
+  @Matches(/^\d{8}$/)
+  code!: string;
+
+  @Matches(/^1[3-9]\d{9}$/)
+  verifiedPhone!: string;
+
+  @Equals(true)
+  identityVerified!: true;
+}
+
+export class ReplyMemberMessageDto implements ReplyMemberMessageRequest {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reply!: string;
+}
 
 export class CreateMemberLevelDto implements CreateMemberLevelRequest {
   @IsString()
@@ -48,17 +82,21 @@ export class CreateMemberDto implements CreateMemberRequest {
   id?: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
   nickname!: string;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   remark?: string;
 
   @IsString()
+  @Matches(/^1[3-9]\d{9}$/, { message: 'phone must be a valid mainland China mobile number' })
   @IsOptional()
   phone?: string;
 
-  @IsDateString()
+  @Matches(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, { message: 'birthday must use MM-DD format' })
   @IsOptional()
   birthday?: string;
 
@@ -128,9 +166,111 @@ export class UpdateProductTypeDto implements UpdateProductTypeRequest {
   sortOrder?: number;
 }
 
+export class CreateProductCategoryDto implements CreateProductCategoryRequest {
+  @IsString()
+  name!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sortOrder?: number;
+}
+
+export class UpdateProductCategoryDto implements UpdateProductCategoryRequest {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sortOrder?: number;
+}
+
+export class CreateCatalogProductDto implements CreateCatalogProductRequest {
+  @IsString()
+  @IsOptional()
+  categoryId?: string;
+
+  @IsString()
+  name!: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  referencePrice?: number;
+
+  @IsArray()
+  @ArrayMaxSize(9)
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sortOrder?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
+
+export class UpdateCatalogProductDto implements UpdateCatalogProductRequest {
+  @IsString()
+  @IsOptional()
+  categoryId?: string | null;
+
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  referencePrice?: number | null;
+
+  @IsArray()
+  @ArrayMaxSize(9)
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sortOrder?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
+
 export class CreateAdminAppointmentDto implements CreateAdminAppointmentRequest {
   @IsString()
   userId!: string;
+
+  @IsIn(Object.values(BUSINESS_TYPE))
+  @IsOptional()
+  businessType?: BusinessType;
+
+  @IsString()
+  @IsOptional()
+  productId?: string;
 
   @IsDateString()
   appointmentDate!: string;
@@ -145,6 +285,7 @@ export class CreateAdminAppointmentDto implements CreateAdminAppointmentRequest 
   endTime?: string;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   remark?: string;
 
@@ -153,14 +294,39 @@ export class CreateAdminAppointmentDto implements CreateAdminAppointmentRequest 
   status?: AppointmentStatus;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   adminRemark?: string;
+}
+
+export class CreateAppointmentUnavailableDateDto implements CreateAppointmentUnavailableDateRequest {
+  @IsString()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, {
+    message: 'appointmentDate must use YYYY-MM-DD format',
+  })
+  appointmentDate!: string;
+
+  @IsIn(['ALL', ...Object.values(BUSINESS_TYPE)])
+  businessType!: AppointmentAvailabilityScope;
+
+  @IsString()
+  @MaxLength(120)
+  @IsOptional()
+  reason?: string;
 }
 
 export class UpdateAppointmentDto implements UpdateAppointmentRequest {
   @IsString()
   @IsOptional()
   userId?: string;
+
+  @IsIn(Object.values(BUSINESS_TYPE))
+  @IsOptional()
+  businessType?: BusinessType;
+
+  @IsString()
+  @IsOptional()
+  productId?: string | null;
 
   @IsDateString()
   @IsOptional()
@@ -177,6 +343,7 @@ export class UpdateAppointmentDto implements UpdateAppointmentRequest {
   endTime?: string;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   remark?: string;
 
@@ -185,6 +352,7 @@ export class UpdateAppointmentDto implements UpdateAppointmentRequest {
   status?: AppointmentStatus;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   adminRemark?: string;
 }
@@ -194,7 +362,34 @@ export class RejectRechargeAdminDto implements RejectRechargeRequest {
   reason!: string;
 }
 
+export class AdminRechargeDto implements AdminRechargeRequest {
+  @IsUUID()
+  @IsOptional()
+  requestId?: string;
+  @IsString()
+  userId!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  amount?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  points?: number;
+
+  @IsString()
+  @IsOptional()
+  remark?: string;
+}
+
 export class CreateConsumptionOrderDto implements CreateConsumptionOrderRequest {
+  @IsUUID()
+  @IsOptional()
+  requestId?: string;
   @IsString()
   userId!: string;
 
@@ -233,19 +428,32 @@ export class CreateConsumptionOrderDto implements CreateConsumptionOrderRequest 
 }
 
 export class UpdateMemberDto implements UpdateMemberRequest {
-  @IsString()
+  @IsNumber()
+  @Min(0)
   @IsOptional()
-  id?: string;
+  expectedBalance?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  expectedPoints?: number;
 
   @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  adjustmentReason?: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
   @IsOptional()
   nickname?: string;
 
   @IsString()
+  @MaxLength(500)
   @IsOptional()
   remark?: string;
 
-  @IsDateString()
+  @Matches(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, { message: 'birthday must use MM-DD format' })
   @IsOptional()
   birthday?: string;
 

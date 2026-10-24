@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-16T03:16:38.062882+00:00",
+  "status": "reviewed-candidate-fidelity-not-passed",
+  "engine": "builtin-image_gen",
+  "classification": "AI 辅助实物优化图",
+  "input": {
+    "id": "nail-star-photo-opt-r2",
+    "sku": "UNASSIGNED-user-photo-b2bdb426",
+    "mode": "product-edit",
+    "category": "nail",
+    "shot": "hero",
+    "brief": "图片1是待局部修正的第一版优化图，图片2是用户原照且是甲面图案和珠光的唯一真实性依据。只修正图片1最上方有星星的甲面：去掉靠甲尖左侧新增的那一颗白色小星，恢复为原图裸粉珠光底。该甲面只应保留原照里的中央大银白星和两颗棕铜色小星，位置按图片2，不新增任何星形。把各甲面过强的细白点颗粒略微减弱，接近图片2的细腻珠光而非夸张颗粒亮片。保持图片1现有背景、手势、袖口、构图、光线以及其它甲面的图案不变。",
+    "facts": [
+      "附件为用户提供的美甲照片，未提供店内SKU，本任务的sku字段仅为未绑定商品的本地附件标识。",
+      "照片中四片可见甲面：裸粉半透银白珠光，两个银白大星与棕铜小星图案甲面，以及两个浅蓝圆点法式配银色小饰的甲面。"
+    ],
+    "preserve": [
+      "四片可见甲面的轮廓、长度、比例与逐指花纹对应关系",
+      "裸粉底色、珠光方向及银白大星和棕铜小星的形状、数量与位置",
+      "浅蓝法式边界、深色圆点和银色小饰的原有位置及数量，不额外添加星钻",
+      "原手势、皮肤真实纹理与肤色、现有两枚细戒指、浅灰针织袖口",
+      "原图边缘被截断的手指仍保持自然边界，不重建看不见的部分"
+    ],
+    "edit_scope": "仅去除上方甲面那颗原照不存在的额外白色小星，温和降低人工增强的白色珠光颗粒。其它全部保持图片1，图案以图片2原照校准。",
+    "product_images": [
+      "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/nail-star-photo-opt-v1/nail-star-photo-opt-v1/original.png",
+      "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/inputs/nail-star-b2bdb426/source.jpg"
+    ]
+  },
+  "references": [
+    {
+      "role": "product",
+      "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/nail-star-photo-opt-v1/nail-star-photo-opt-v1/original.png",
+      "sha256": "c028b0e308769760ae4e8a169d1af6468ed06864c5a4b7ad8dd8a56c621b6e1e"
+    },
+    {
+      "role": "product",
+      "path": "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/inputs/nail-star-b2bdb426/source.jpg",
+      "sha256": "6242e1b995f98dd2a31a8fe6edcb14a321c783aa122f0397d77dea7a880e0d5a"
+    }
+  ],
+  "brand_snapshot": {
+    "brand": "月光石屿 MOONISLE",
+    "version": "1.0-draft",
+    "basis": "design/DESIGN.md 2026-10-15 保留原品牌色；nail.vue 月光色、低饱和、清透质感；现有 app-bg.jpg 与 logo-main.jpg。摄影构图为首版提案，待样张反馈校准。",
+    "shared": "现代精品生活方式商品摄影，安静、细腻、自然、可亲近。清透月光感通过柔和光线和真实材质表现，不是奇幻插画。背景以奶油白 #F7F4EF、月光灰蓝 #EDF2F4 为主，深灰 #3D4652 仅作少量层次。色号仅描述背景氛围。中性自然白平衡，低饱和的是环境，不降低商品本色饱和度。柔和侧上方漫射光，真实接触阴影；商品轮廓清楚、材质微细节可见，不做浓重柔焦。",
+    "avoid": "不要文字、价格、Logo、水印、边框、拼图或UI。不要悬浮产品、强烈金光、星空、月亮道具堆叠、过曝高光、夸张散景、塑料皮肤、杂乱装饰、促销风。商品以外的道具克制且不得看似销售套装。",
+    "categories": {
+      "nail": "美甲：突出甲形、清透层次、输入明确的珠光/猫眼/晕染工艺，细节可实际制作。若出现手，解剖自然，保留皮肤纹理，不添加戒指；甲片轮廓完整、数量准确。",
+      "accessory": "饰品：真实金属反射和石纹，连接与扣头物理合理；柔和高光而非满屏星芒。成对商品完整成对展示，保持结构比例，不添加额外吊坠或品牌印记。",
+      "flower": "鲜花：真实鲜切花摄影，花瓣、叶片、花茎自然，适度通透，主体与包装完整，保留束型；纸材不抢眼，不增加礼盒、花瓶或赠品，除非输入明确包含。"
+    },
+    "shots": {
+      "list": "约5:3横幅商品列表图。完整商品轮廓居中，四周留白，右下角不要放关键细节，为看图控件留位置；以当前实际容器比例验证，不拉伸商品。",
+      "hero": "1:1 方形商品主图，一件作品/一套明确商品，主体居中，完整边缘可见，四周适量留白；关键辨识细节尽量在中央区域。单张完整照片，不排版。",
+      "detail": "1:1 方形细节摄影，聚焦输入明确的材质或工艺。实物编辑只放大参考可见区域，不发明隐藏结构。",
+      "social": "3:4 竖幅生活方式图，主体清楚、场景克制，少量自然留白，默认无字；实物编辑保持产品身份与真实颜色。"
+    }
+  },
+  "prompt_sha256": "04dccc84a0c608c401dbd70569880d00fc7c8906f5e047a6da507ed6e1e81e4a",
+  "output": {
+    "path": "original.png",
+    "source": "/Users/dosthrk/.codex/generated_images/01a1429b-558f-7862-8f89-0fd3af7ca892/exec-eeb114b8-e161-4a81-a7cd-d785997832d6.png",
+    "sha256": "035642129b83af80f5640046dbbcd79c20a8932194aa080f0ec3ff57b08a3f45",
+    "bytes": 1790151,
+    "captured_at": "2026-10-16T03:19:49.686913+00:00"
+  },
+  "review_file": "review.json",
+  "sku_binding": "unassigned; local attachment identifier only"
+}

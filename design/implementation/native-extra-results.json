@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "Time selection updates summary",
+    "Remark input accepts text",
+    "Close panel does not submit",
+    "Real wx.previewImage opens on image 2/3",
+    "Native viewer tap returns with image 2/3"
+  ],
+  "returnPage": "pages/nail-detail/nail-detail",
+  "returnCount": "2/3 · 查看大图"
+}

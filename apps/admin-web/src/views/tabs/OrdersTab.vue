@@ -20,9 +20,10 @@ import {
   NStatistic,
   NTag,
   NUpload,
+  useDialog,
   useMessage,
 } from 'naive-ui';
-import { Plus, Trash2 } from 'lucide-vue-next';
+import { Plus, Trash2 } from '@lucide/vue';
 import type { ConsumptionOrder, ProductType } from '@member-platform/shared';
 import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
@@ -30,6 +31,7 @@ import { formatMoney } from '@/composables/useFormatters';
 
 const { members, levels, productTypes, orders, loadAll } = useDataStore();
 const message = useMessage();
+const dialog = useDialog();
 
 const filterUserId = ref<string | 'all'>('all');
 const showCreate = ref(false);
@@ -189,6 +191,24 @@ async function deleteProductType(item: ProductType) {
   }
 }
 
+function confirmDeleteOrder(item: ConsumptionOrder) {
+  dialog.warning({
+    title: '删除消费订单',
+    content: `确定删除订单 ${item.orderNo} 吗？系统将恢复会员余额 ¥${formatMoney(item.finalPrice)}，并从营收统计中移除该笔订单。`,
+    positiveText: '删除并冲销',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await api.deleteConsumptionOrder(item.id);
+        message.success('订单已删除，会员余额已恢复');
+        await loadAll();
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '删除失败');
+      }
+    },
+  });
+}
+
 const columns = computed<DataTableColumns<ConsumptionOrder>>(() => [
   { title: '订单号', key: 'orderNo', width: 160, render: (row) => h('span', { class: 'mono' }, row.orderNo) },
   { title: '会员', key: 'userId', width: 220, render: (row) => h('span', { class: 'mono' }, row.userId) },
@@ -224,12 +244,29 @@ const columns = computed<DataTableColumns<ConsumptionOrder>>(() => [
   },
   { title: '日期', key: 'orderDate', width: 110 },
   { title: '备注', key: 'remark', minWidth: 140, render: (row) => row.remark || '—' },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 88,
+    fixed: 'right',
+    render: (row) =>
+      h(
+        NButton,
+        {
+          size: 'tiny',
+          type: 'error',
+          secondary: true,
+          onClick: () => confirmDeleteOrder(row),
+        },
+        { default: () => '删除' },
+      ),
+  },
 ]);
 </script>
 
 <template>
   <NSpace vertical :size="20">
-    <NCard :bordered="false" class="surface">
+    <NCard :bordered="false" class="surface sticky-header-card">
       <template #header>
         <div class="card-header">
           <span>用户消费记录（{{ filteredOrders.length }}）</span>
@@ -255,7 +292,7 @@ const columns = computed<DataTableColumns<ConsumptionOrder>>(() => [
         :columns="columns"
         :data="filteredOrders"
         :bordered="false"
-        :scroll-x="1280"
+        :scroll-x="1380"
         :single-line="false"
         size="small"
       >

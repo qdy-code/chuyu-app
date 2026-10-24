@@ -6,8 +6,10 @@ export const auditActionLabels: Record<string, string> = {
   'recharge.apply': '提交充值申请',
   'recharge.approve': '通过充值申请',
   'recharge.reject': '拒绝充值申请',
+  'member.recharge': '后台充值',
   'member.create': '新增会员',
   'member.update': '修改会员资料',
+  'member.delete': '删除会员',
   'member.self.update': '会员自助修改资料',
   'member_level.create': '新增会员等级',
   'member_level.update': '修改会员等级',
@@ -16,8 +18,12 @@ export const auditActionLabels: Record<string, string> = {
   'product_type.update': '修改产品类型',
   'product_type.delete': '删除产品类型',
   'consumption.create': '创建消费订单',
+  'consumption.delete': '删除并冲销消费订单',
   'appointment.create': '会员提交预约',
   'appointment.update': '处理预约',
+  'appointment.delete': '删除预约排期',
+  'appointment_unavailable_date.create': '设置不可预约日',
+  'appointment_unavailable_date.delete': '恢复可预约日',
 };
 
 export const auditFieldLabels: Record<string, string> = {
@@ -29,6 +35,9 @@ export const auditFieldLabels: Record<string, string> = {
   originalPrice: '原价',
   discountRate: '折扣率',
   finalPrice: '会员价',
+  orderNo: '订单号',
+  orderDate: '订单日期',
+  title: '订单标题',
   message: '说明',
   comment: '备注',
   reason: '原因',
@@ -40,12 +49,17 @@ export const auditFieldLabels: Record<string, string> = {
   levelId: '等级 ID',
   levelName: '等级名称',
   appointmentDate: '预约日期',
+  businessType: '业务范围',
   startTime: '开始时间',
   endTime: '结束时间',
   status: '状态',
   adminRemark: '后台备注',
   id: '会员 ID',
   changes: '变更明细',
+  appointmentCount: '保留预约记录',
+  rechargeCount: '保留充值记录',
+  consumptionCount: '保留消费记录',
+  ledgerCount: '保留余额流水',
 };
 
 export function getAuditActionLabel(action: string): string {
@@ -67,7 +81,7 @@ export function formatAuditMetadata(metadata: AuditLog['metadata']): string[] {
     if (key === 'changes' && value && typeof value === 'object' && !Array.isArray(value)) {
       for (const [field, detail] of Object.entries(value as Record<string, unknown>)) {
         const fieldLabel = auditFieldLabels[field] || field;
-        if (detail && typeof detail === 'object' && 'from' in detail && 'to' in detail) {
+        if (detail && typeof detail === 'object' && ('from' in detail || 'to' in detail)) {
           const change = detail as { from?: unknown; to?: unknown };
           lines.push(`${fieldLabel}：${formatAuditValue(change.from)} → ${formatAuditValue(change.to)}`);
         } else {
@@ -77,7 +91,7 @@ export function formatAuditMetadata(metadata: AuditLog['metadata']): string[] {
       continue;
     }
 
-    if (value && typeof value === 'object' && 'from' in value && 'to' in value) {
+    if (value && typeof value === 'object' && ('from' in value || 'to' in value)) {
       const change = value as { from?: unknown; to?: unknown };
       lines.push(`${auditFieldLabels[key] || key}：${formatAuditValue(change.from)} → ${formatAuditValue(change.to)}`);
       continue;

@@ -1,0 +1,155 @@
+{
+  "system": {
+    "brand": "devtools",
+    "model": "iPhone 12/13 (Pro)",
+    "system": "iOS 10.0.1",
+    "platform": "devtools",
+    "benchmarkLevel": -1,
+    "pixelRatio": 3,
+    "screenWidth": 390,
+    "screenHeight": 844,
+    "windowWidth": 390,
+    "windowHeight": 671,
+    "statusBarHeight": 47,
+    "safeArea": {
+      "top": 47,
+      "left": 0,
+      "right": 390,
+      "bottom": 810,
+      "width": 390,
+      "height": 763
+    },
+    "language": "zh_CN",
+    "version": "8.0.5",
+    "fontSizeSetting": 16,
+    "SDKVersion": "3.15.2",
+    "host": {
+      "env": "WeChat"
+    },
+    "enableDebug": false,
+    "mode": "default",
+    "deviceOrientation": "portrait",
+    "bluetoothEnabled": true,
+    "locationEnabled": true,
+    "wifiEnabled": true,
+    "albumAuthorized": true,
+    "cameraAuthorized": true,
+    "locationAuthorized": true,
+    "microphoneAuthorized": true,
+    "notificationAuthorized": true,
+    "notificationAlertAuthorized": true,
+    "notificationBadgeAuthorized": true,
+    "notificationSoundAuthorized": true,
+    "phoneCalendarAuthorized": true,
+    "bluetoothAuthorized": true,
+    "locationReducedAccuracy": true,
+    "devicePixelRatio": 3
+  },
+  "checks": [
+    "source: detail renders, fits image, no invented price",
+    "v1: detail renders, fits image, no invented price",
+    "r2: detail renders, fits image, no invented price",
+    "concept: detail renders, fits image, no invented price",
+    "source: list aspectFill captured",
+    "v1: list aspectFill captured",
+    "r2: list aspectFill captured",
+    "concept: list aspectFill captured",
+    "actual wx.previewImage opened on source photo"
+  ],
+  "metrics": [
+    {
+      "id": "source",
+      "context": "detail",
+      "title": "原始实拍 · 星点法式",
+      "imageMode": "aspectFit",
+      "gallery": {
+        "width": 358,
+        "height": 422
+      },
+      "page": {
+        "width": 390,
+        "height": 1289
+      }
+    },
+    {
+      "id": "v1",
+      "context": "detail",
+      "title": "优化候选 V1 · 保真未通过",
+      "imageMode": "aspectFit",
+      "gallery": {
+        "width": 358,
+        "height": 422
+      },
+      "page": {
+        "width": 390,
+        "height": 1289
+      }
+    },
+    {
+      "id": "r2",
+      "context": "detail",
+      "title": "优化候选 R2 · 保真未通过",
+      "imageMode": "aspectFit",
+      "gallery": {
+        "width": 358,
+        "height": 422
+      },
+      "page": {
+        "width": 390,
+        "height": 1289
+      }
+    },
+    {
+      "id": "concept",
+      "context": "detail",
+      "title": "月雾贝光 · AI概念图",
+      "imageMode": "aspectFit",
+      "gallery": {
+        "width": 358,
+        "height": 422
+      },
+      "page": {
+        "width": 390,
+        "height": 1289
+      }
+    },
+    {
+      "id": "source",
+      "context": "list",
+      "imageMode": "aspectFill",
+      "gallery": {
+        "width": 366,
+        "height": 223
+      }
+    },
+    {
+      "id": "v1",
+      "context": "list",
+      "imageMode": "aspectFill",
+      "gallery": {
+        "width": 366,
+        "height": 223
+      }
+    },
+    {
+      "id": "r2",
+      "context": "list",
+      "imageMode": "aspectFill",
+      "gallery": {
+        "width": 366,
+        "height": 223
+      }
+    },
+    {
+      "id": "concept",
+      "context": "list",
+      "imageMode": "aspectFill",
+      "gallery": {
+        "width": 366,
+        "height": 223
+      }
+    }
+  ],
+  "exceptions": [],
+  "onlyGET": true
+}

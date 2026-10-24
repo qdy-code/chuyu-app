@@ -1,0 +1,4 @@
+interface:
+  display_name: "月光石屿商品图"
+  short_description: "统一品牌审美，生成美甲、饰品与鲜花概念图，优化实物照片并归档质检记录"
+  default_prompt: "使用 $moonisle-product-images，为月光石屿生成美甲、饰品和鲜花商品图；有实拍时保留商品本体，没有实拍时明确作为概念图。"

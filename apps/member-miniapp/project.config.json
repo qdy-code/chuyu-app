@@ -14,12 +14,13 @@
     "useCompilerPlugins": false,
     "minifyWXML": true,
     "compileWorklet": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "minifyWXSS": true,
     "localPlugins": false,
     "disableUseStrict": false,
     "condition": false,
+    "urlCheck": true,
     "swc": false,
     "disableSWC": true
   },
@@ -30,8 +31,8 @@
     "include": []
   },
   "miniprogramRoot": "dist/build/mp-weixin/",
-  "appid": "wx1911c030d37537ff",
-  "projectname": "member-miniapp",
+  "appid": "wx1cf2caed662f562a",
+  "projectname": "月光石屿MOONISLE",
   "editorSetting": {},
-  "libVersion": "3.15.1"
+  "libVersion": "3.15.2"
 }

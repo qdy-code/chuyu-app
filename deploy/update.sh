@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================
-# 初屿会员系统 — 更新部署脚本（Git 模式）
+# 月光石屿会员系统 - 更新部署脚本（Git 模式）
 # 用法（在服务器 /opt/chuyu-app 目录运行）：
 #   bash deploy/update.sh
 # ============================================
@@ -15,32 +15,20 @@ if [ ! -f deploy/.env.production ]; then
   exit 1
 fi
 
-echo "=== 1/5 拉取最新代码 ==="
-git fetch --all
-git reset --hard origin/main
-
-echo "=== 2/5 本地构建 admin-web 静态文件 ==="
-if command -v pnpm &>/dev/null; then
-  pnpm install --frozen-lockfile
-  pnpm --filter @member-platform/shared build
-  VITE_API_BASE_URL=/api pnpm --filter @member-platform/admin-web build
-else
-  echo "服务器未安装 pnpm，跳过 admin-web 本地构建"
-  echo "请确保 apps/admin-web/dist 已通过 git 提交或本地推送"
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "错误: 服务器工作区存在未提交修改，请先人工确认，更新已停止" >&2
+  exit 1
 fi
 
-echo "=== 3/5 重新构建 Docker 镜像 ==="
-docker compose -f docker-compose.production.yml --env-file deploy/.env.production build
+echo "=== 拉取最新代码 ==="
+git fetch origin main
+git merge --ff-only origin/main
 
-echo "=== 4/5 重启服务 ==="
-docker compose -f docker-compose.production.yml --env-file deploy/.env.production up -d
-
-echo "=== 5/5 应用数据库迁移 ==="
-sleep 3
-docker compose -f docker-compose.production.yml exec -T api npx prisma migrate deploy
+echo "=== 执行备份、迁移与健康检查 ==="
+bash deploy/deploy.sh
 
 echo ""
 echo "========================================="
 echo "  更新完成！"
-echo "  https://chuy.shop"
+echo "  查看 deploy/.env.production 中的 APP_DOMAIN 获取后台地址"
 echo "========================================="

@@ -1,9 +1,33 @@
 {
   "pages": [
     {
+      "path": "pages/nail/nail",
+      "style": {
+        "navigationBarTitleText": "美甲"
+      }
+    },
+    {
+      "path": "pages/nail-detail/nail-detail",
+      "style": {
+        "navigationBarTitleText": "作品详情"
+      }
+    },
+    {
+      "path": "pages/accessory/accessory",
+      "style": {
+        "navigationBarTitleText": "饰品"
+      }
+    },
+    {
+      "path": "pages/flower/flower",
+      "style": {
+        "navigationBarTitleText": "鲜花"
+      }
+    },
+    {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "会员中心"
+        "navigationBarTitleText": "我的"
       }
     },
     {
@@ -15,7 +39,13 @@
     {
       "path": "pages/appointment/appointment",
       "style": {
-        "navigationBarTitleText": "预约到店"
+        "navigationBarTitleText": "我的预约"
+      }
+    },
+    {
+      "path": "pages/styles/styles",
+      "style": {
+        "navigationBarTitleText": "收藏与款式"
       }
     },
     {
@@ -25,15 +55,21 @@
       }
     },
     {
+      "path": "pages/recharge/recharge",
+      "style": {
+        "navigationBarTitleText": "充值记录"
+      }
+    },
+    {
       "path": "pages/account/account",
       "style": {
         "navigationBarTitleText": "账户资料"
       }
     },
     {
-      "path": "pages/profile/profile",
+      "path": "pages/messages/messages",
       "style": {
-        "navigationBarTitleText": "账户资料"
+        "navigationBarTitleText": "留言给门店"
       }
     },
     {
@@ -51,8 +87,40 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "初屿会员",
+    "navigationBarTitleText": "月光石屿MOONISLE",
     "navigationBarBackgroundColor": "#F7F4EF",
     "backgroundColor": "#F7F4EF"
+  },
+  "tabBar": {
+    "color": "#6B7280",
+    "selectedColor": "#3D4652",
+    "backgroundColor": "#F7F4EF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/nail/nail",
+        "text": "美甲",
+        "iconPath": "static/tabbar/nail.png",
+        "selectedIconPath": "static/tabbar/nail-active.png"
+      },
+      {
+        "pagePath": "pages/accessory/accessory",
+        "text": "饰品",
+        "iconPath": "static/tabbar/accessory.png",
+        "selectedIconPath": "static/tabbar/accessory-active.png"
+      },
+      {
+        "pagePath": "pages/flower/flower",
+        "text": "鲜花",
+        "iconPath": "static/tabbar/flower.png",
+        "selectedIconPath": "static/tabbar/flower-active.png"
+      },
+      {
+        "pagePath": "pages/index/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/mine.png",
+        "selectedIconPath": "static/tabbar/mine-active.png"
+      }
+    ]
   }
 }

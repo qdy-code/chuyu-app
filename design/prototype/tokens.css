@@ -1,0 +1,35 @@
+/* Generated from ../tokens.json; prototype only. */
+.phone[data-theme="light"] {
+  --canvas: #F7F4EF;
+  --surface: #FFFFFF;
+  --surfaceSubtle: #EDF2F4;
+  --text: #111827;
+  --textSecondary: #667085;
+  --primary: #3D4652;
+  --onPrimary: #F7F4EF;
+  --border: #D0D5DD;
+  --controlBorder: #667085;
+  --accent: #527D68;
+  --accentSurface: #E6EEEB;
+  --success: #527D68;
+  --warning: #805C25;
+  --danger: #A64B47;
+  --onAccentSurface: #111827;
+}
+.phone[data-theme="dark"] {
+  --canvas: #181D23;
+  --surface: #232B34;
+  --surfaceSubtle: #303A45;
+  --text: #F3F5F3;
+  --textSecondary: #B5BEC6;
+  --primary: #E7EDE9;
+  --onPrimary: #18221E;
+  --border: #46525E;
+  --controlBorder: #829087;
+  --accent: #B4CCBE;
+  --accentSurface: #293C32;
+  --success: #A6CFB4;
+  --warning: #E4C38C;
+  --danger: #F1AAA4;
+  --onAccentSurface: #F3F5F3;
+}

@@ -1,0 +1,28 @@
+{
+  "jobs": [
+    {
+      "id": "nail-star-photo-opt-r2",
+      "sku": "UNASSIGNED-user-photo-b2bdb426",
+      "mode": "product-edit",
+      "category": "nail",
+      "shot": "hero",
+      "brief": "图片1是待局部修正的第一版优化图，图片2是用户原照且是甲面图案和珠光的唯一真实性依据。只修正图片1最上方有星星的甲面：去掉靠甲尖左侧新增的那一颗白色小星，恢复为原图裸粉珠光底。该甲面只应保留原照里的中央大银白星和两颗棕铜色小星，位置按图片2，不新增任何星形。把各甲面过强的细白点颗粒略微减弱，接近图片2的细腻珠光而非夸张颗粒亮片。保持图片1现有背景、手势、袖口、构图、光线以及其它甲面的图案不变。",
+      "facts": [
+        "附件为用户提供的美甲照片，未提供店内SKU，本任务的sku字段仅为未绑定商品的本地附件标识。",
+        "照片中四片可见甲面：裸粉半透银白珠光，两个银白大星与棕铜小星图案甲面，以及两个浅蓝圆点法式配银色小饰的甲面。"
+      ],
+      "preserve": [
+        "四片可见甲面的轮廓、长度、比例与逐指花纹对应关系",
+        "裸粉底色、珠光方向及银白大星和棕铜小星的形状、数量与位置",
+        "浅蓝法式边界、深色圆点和银色小饰的原有位置及数量，不额外添加星钻",
+        "原手势、皮肤真实纹理与肤色、现有两枚细戒指、浅灰针织袖口",
+        "原图边缘被截断的手指仍保持自然边界，不重建看不见的部分"
+      ],
+      "edit_scope": "仅去除上方甲面那颗原照不存在的额外白色小星，温和降低人工增强的白色珠光颗粒。其它全部保持图片1，图案以图片2原照校准。",
+      "product_images": [
+        "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/output/nail-star-photo-opt-v1/nail-star-photo-opt-v1/original.png",
+        "/Users/dosthrk/dev-project/personal/pospal/chuyu-app/design/product-images/inputs/nail-star-b2bdb426/source.jpg"
+      ]
+    }
+  ]
+}

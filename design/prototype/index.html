@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>月光石屿 · 商品详情交互原型</title>
+<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+<header class="workspace-header"><a href="#list" id="brand-link">月光石屿 <span>MOONISLE</span></a><span class="draft-label">交互原型 · 不连接业务</span></header>
+<main class="workspace">
+  <aside class="intro"><p class="eyebrow">商品体验 / 交互提案</p><h1>从心动，<br>到一次到店。</h1><p>保留熟悉的月光色调，<br>让浏览、看图和预约自然衔接。</p><div class="intro-rule"></div><h2>可以这样体验</h2><ol><li>在列表选择「查看详情」</li><li>滑动图片，点开大图再返回</li><li>收藏款式，打开预约面板</li><li>返回，继续刚才的浏览</li></ol><p class="fine">图像为构图示意，非门店实拍。<br>名称、价格和时段仅供演示。</p></aside>
+  <section class="preview-wrap" aria-label="小程序交互原型"><div class="preview-label"><span id="screen-label">美甲作品库</span><span id="size-label">390px</span></div>
+  <div class="phone" data-theme="light" id="phone">
+    <div class="app-shell" id="app-shell">
+      <nav class="app-nav" aria-label="页面导航"><button class="icon-button" id="back" aria-label="返回作品列表" hidden><svg><use href="#i-back"/></svg></button><span id="nav-title">美甲</span><span class="capsule" aria-hidden="true">••• <span>⊙</span></span></nav>
+      <section class="page list-page" id="list-page" aria-label="作品列表">
+        <div class="list-heading"><span class="brand-small">月光石屿</span><h2>美甲作品库</h2><p>看见喜欢的款式，留给下一次到店。</p><button class="text-button" data-action="generic-book">不选款式，直接预约 <svg><use href="#i-next"/></svg></button></div>
+        <div class="filters" id="filters" aria-label="作品分类"><button class="filter selected" data-category="全部" aria-pressed="true">全部</button><button class="filter" data-category="款式设计" aria-pressed="false">款式设计</button><button class="filter" data-category="基础护理" aria-pressed="false">基础护理</button></div>
+        <div id="catalog"></div><div class="list-end">喜欢的款式，可以先收藏。</div>
+      </section>
+      <section class="page detail-page" id="detail-page" aria-label="商品详情" hidden></section>
+      <footer class="tabbar" id="tabbar" aria-label="现有底部导航"><button class="tab current" aria-current="page" data-action="home"><svg><use href="#i-nail"/></svg>美甲</button><button class="tab" data-action="other-tab"><svg><use href="#i-gem"/></svg>饰品</button><button class="tab" data-action="other-tab"><svg><use href="#i-flower"/></svg>鲜花</button><button class="tab" data-action="other-tab"><svg><use href="#i-user"/></svg>我的</button></footer>
+      <footer class="action-bar" id="action-bar" hidden><button class="button secondary favorite" id="detail-favorite" data-action="favorite" aria-pressed="false"><svg><use href="#i-heart"/></svg><span>收藏</span></button><button class="button primary" id="detail-book" data-action="book">预约此款 <svg><use href="#i-next"/></svg></button></footer>
+    </div>
+    <div class="overlay" id="overlay" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div><p class="preview-caption">可点击、滑动、返回。此原型不会提交真实预约。</p></section>
+  <aside class="review-controls"><h2>体验设置</h2><label for="theme">外观</label><select id="theme"><option value="light">原有浅色调</option><option value="dark">深色兼容方案</option></select><label class="switch-row"><span>减少动态效果</span><input id="reduce" type="checkbox" role="switch"></label><label for="width">预览宽度</label><select id="width"><option value="390">390px · 常规手机</option><option value="375">375px · 紧凑手机</option><option value="320">320px · 小屏手机</option><option value="430">430px · 大屏手机</option></select><label for="scenario">内容状态</label><select id="scenario"><option value="normal">正常内容</option><option value="loading">正在加载</option><option value="error">加载失败</option><option value="empty">无商品 / 已下架</option><option value="missing">缺图与未知价格</option><option value="long">长名称与长描述</option></select><label class="switch-row"><span>模拟收藏保存失败</span><input type="checkbox" id="fail-save" role="switch"></label><button class="reset" id="reset">重置演示</button><div class="motion-note"><h3>动效节奏</h3><p>按压 <b>100ms</b><br>收藏反馈 <b>160ms</b><br>面板进入 <b>220ms</b><br>面板退出 <b>180ms</b></p><p class="fine">页面转场在此模拟；接入小程序时优先使用微信原生转场。</p></div></aside>
+</main>
+<svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol><symbol id="i-next" viewBox="0 0 24 24"><path d="m10 5 7 7-7 7"/></symbol><symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24"><path d="M20 5c-3-3-6-1-8 1-2-2-5-4-8-1-3 3-1 7 1 9l7 6 7-6c2-2 4-6 1-9Z"/></symbol><symbol id="i-nail" viewBox="0 0 24 24"><path d="M9 3h6v5H9zM7 10h10l1 10H6zM9 6h6"/></symbol><symbol id="i-gem" viewBox="0 0 24 24"><path d="m12 3 8 7-8 11-8-11Z M4 10h16 M9 3l-2 7 5 11 5-11-2-7"/></symbol><symbol id="i-flower" viewBox="0 0 24 24"><path d="M12 11v10m-6-4 6 3 6-3M12 4c4-5 8 2 4 4 6 1 3 8-2 5-2 5-7 2-5-2-5 0-5-6 0-6-1-4 3-5 3-1Z"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21c0-10 16-10 16 0"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol><symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m3 18 6-6 5 5 3-3 4 4"/></symbol><symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 11h18"/></symbol>
+</defs></svg>
+<script src="prototype.js"></script>
+</body></html>
