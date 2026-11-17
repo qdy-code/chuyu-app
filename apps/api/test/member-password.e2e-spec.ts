@@ -109,4 +109,51 @@ describe('production member password login (isolated database)', () => {
     await expect(store.preparePhoneRecovery(memberId, '13988889999')).rejects.toThrow();
     await request(app.getHttpServer()).get('/members/me/cached-profile').auth(signToken(memberId, 'admin'), { type: 'bearer' }).expect(401);
   });
+
+  it('lets an administrator enable, reset and disable password login on an existing WeChat account', async () => {
+    const api = request(app.getHttpServer());
+    const wechat = await api.post('/auth/wechat/login').send({ code: 'existing-wechat-member' }).expect(201);
+    const id = wechat.body.user.id;
+    const path = `/admin/members/${id}/credential`;
+    const admin = { Authorization: `Bearer ${signToken('admin-001', 'admin')}`, 'x-admin-id': 'forged-admin' };
+    const credentials = { username: 'Customer_Existing', password: 'IsolatedFirst!2397' };
+    await db.member.update({ where: { id }, data: { balance: 610, points: 25, phone: '13900000625', phoneVerifiedAt: new Date() } });
+    const original = await db.member.findUniqueOrThrow({ where: { id } });
+    const count = await db.member.count();
+
+    for (const headers of [{}, { Authorization: `Bearer ${wechat.body.token}` }]) {
+      await api.get(path).set(headers).expect(401);
+      await api.put(path).set(headers).send(credentials).expect(401);
+      await api.delete(path).set(headers).expect(401);
+    }
+    expect((await api.get(path).set(admin).expect(200)).body).toEqual({ username: null, enabled: false });
+    await api.put(path).set(admin).send({ ...credentials, password: 'short' }).expect(400);
+    await api.put(path).set(admin).send({ ...credentials, username: username.toUpperCase() }).expect(409);
+    const created = await api.put(path).set(admin).send(credentials).expect(200);
+    expect(created.body).toEqual({ username: 'customer_existing', enabled: true });
+    expect((await api.get(path).set(admin).expect(200)).body).toEqual(created.body);
+    const first = await login(credentials.password, credentials.username).expect(201);
+    expect(first.body.user).toMatchObject({ id, balance: 610, points: 25 });
+    const latestPassword = 'IsolatedSecond!7294';
+    const newAccount = 'Customer_Renamed';
+    await api.put(path).set(admin).send({ username: newAccount, password: latestPassword }).expect(200);
+    await login(credentials.password, credentials.username).expect(401);
+    await api.get('/members/me/cached-profile').auth(first.body.token, { type: 'bearer' }).expect(401);
+    const second = await login(latestPassword, newAccount).expect(201);
+    await api.delete(path).set(admin).expect(200);
+    await login(latestPassword, newAccount).expect(401);
+    await api.get('/members/me/cached-profile').auth(second.body.token, { type: 'bearer' }).expect(401);
+    await api.put(path).set(admin).send({ username: newAccount, password: latestPassword }).expect(200);
+    await api.get('/members/me/cached-profile').auth(second.body.token, { type: 'bearer' }).expect(401);
+    await login(latestPassword, newAccount).expect(201);
+    await api.get('/members/me/cached-profile').auth(wechat.body.token, { type: 'bearer' }).expect(200);
+
+    expect(await db.member.count()).toBe(count);
+    expect(await db.member.findUniqueOrThrow({ where: { id } })).toEqual(original);
+    const audits = await db.auditLog.findMany({ where: { targetId: id, action: { startsWith: 'member.password.' } } });
+    expect(audits).toHaveLength(4);
+    expect(audits.every(audit => audit.actorId === 'admin-001' && JSON.stringify(audit.metadata) === '{}')).toBe(true);
+    await db.member.update({ where: { id }, data: { deletedAt: new Date() } });
+    await api.put(path).set(admin).send(credentials).expect(404);
+  });
 });

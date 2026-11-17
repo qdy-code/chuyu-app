@@ -39,7 +39,7 @@ export class AuthController {
   async memberPasswordLogin(@Req() request: Request, @Body() payload: MemberPasswordLoginDto): Promise<LoginResponse> {
     const identity = await this.memberPassword.authenticate(payload.username.toLowerCase(), payload.password, request.ip || request.socket.remoteAddress || 'unknown');
     return {
-      token: signToken(identity.memberId, 'member', 86400, identity.authVersion, 'password'),
+      token: signToken(identity.memberId, 'member', 86400, identity.authVersion, 'password', identity.sessionVersion),
       user: await this.pospal.cachedAccountProfile(identity.memberId),
       loginMethod: 'password',
     };

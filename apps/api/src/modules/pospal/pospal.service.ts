@@ -4,10 +4,11 @@ import type { MemberProfile, PospalMemberPreview } from '@member-platform/shared
 import { DataStoreService } from '../../store/data-store.service';
 import { PrismaService } from '../../store/prisma.service';
 import { PospalClientService } from './pospal-client.service';
+import { ConsumptionPhotosService } from './consumption-photos.service';
 
 @Injectable()
 export class PospalService {
-  constructor(private readonly store: DataStoreService, private readonly client: PospalClientService, private readonly prisma: PrismaService) {}
+  constructor(private readonly store: DataStoreService, private readonly client: PospalClientService, private readonly prisma: PrismaService, private readonly photos: ConsumptionPhotosService) {}
 
   async listAccountMembers(): Promise<MemberProfile[]> {
     const members = await this.store.listMembers();
@@ -46,9 +47,9 @@ export class PospalService {
   }
 
   async consumptions(memberId: string) {
-    if (this.client.getConfiguration().accountSource !== 'pospal') return this.store.listConsumptionOrders(memberId);
+    if (this.client.getConfiguration().accountSource !== 'pospal') return this.photos.decorate(memberId, await this.store.listConsumptionOrders(memberId));
     const link = await this.memberLink(memberId);
-    return link ? this.client.getConsumptions(link.customerUid, memberId) : [];
+    return link ? this.photos.decorate(memberId, await this.client.getConsumptions(link.customerUid, memberId), { account: link.account, customerUid: link.customerUid }) : [];
   }
 
   private async memberLink(memberId: string) {

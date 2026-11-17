@@ -5,6 +5,7 @@ interface TokenPayload {
   role: 'member' | 'admin';
   version?: number;
   method?: 'password';
+  credentialVersion?: number;
   iat: number;
   exp: number;
 }
@@ -13,9 +14,9 @@ function getSecret(): string {
   return process.env.JWT_SECRET || 'dev-secret-change-in-production';
 }
 
-export function signToken(sub: string, role: TokenPayload['role'], expiresInSeconds = 86400 * 30, version = 0, method?: 'password'): string {
+export function signToken(sub: string, role: TokenPayload['role'], expiresInSeconds = 86400 * 30, version = 0, method?: 'password', credentialVersion?: number): string {
   const now = Math.floor(Date.now() / 1000);
-  const payload: TokenPayload = { sub, role, version, ...(method ? { method } : {}), iat: now, exp: now + expiresInSeconds };
+  const payload: TokenPayload = { sub, role, version, ...(method ? { method, credentialVersion } : {}), iat: now, exp: now + expiresInSeconds };
   const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = createHmac('sha256', getSecret()).update(data).digest('base64url');
   return `${data}.${sig}`;
@@ -44,6 +45,7 @@ export function verifyToken(token: string): TokenPayload | null {
       (payload.role !== 'member' && payload.role !== 'admin') ||
       (payload.version !== undefined && (!Number.isSafeInteger(payload.version) || payload.version < 0)) ||
       (payload.method !== undefined && payload.method !== 'password') ||
+      (payload.credentialVersion !== undefined && (!Number.isSafeInteger(payload.credentialVersion) || payload.credentialVersion < 0)) ||
       typeof payload.iat !== 'number' ||
       typeof payload.exp !== 'number' ||
       payload.iat > now + 60 ||

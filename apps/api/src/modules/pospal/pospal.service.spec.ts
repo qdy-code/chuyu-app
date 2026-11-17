@@ -3,6 +3,9 @@ import { DataStoreService } from '../../store/data-store.service';
 import { PospalClientService } from './pospal-client.service';
 import { PospalService } from './pospal.service';
 import { PrismaService } from '../../store/prisma.service';
+import { ConsumptionPhotosService } from './consumption-photos.service';
+
+const photos = { decorate: async (_id: string, orders: unknown[]) => orders } as ConsumptionPhotosService;
 
 describe('PospalService member preview', () => {
   const candidate = { uid: '101', number: 'VIP1', name: 'test', balance: 12.5, giftBalance: 0, points: 15 };
@@ -15,7 +18,7 @@ describe('PospalService member preview', () => {
     jest.resetAllMocks();
     store.getMemberById.mockResolvedValue(member);
     client.findMembersByPhone.mockResolvedValue({ candidates: [candidate], hasMore: false, requestId: 'test-request' });
-    service = new PospalService(store as unknown as DataStoreService, client as unknown as PospalClientService, {} as PrismaService);
+    service = new PospalService(store as unknown as DataStoreService, client as unknown as PospalClientService, {} as PrismaService, photos);
   });
 
   it('returns a difference for human review without confirming binding or writing balances', async () => {
@@ -76,7 +79,7 @@ describe('Pospal account reads and identity binding', () => {
     };
     Object.assign(tx, { pospalMemberSync: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() } });
     const prisma = { ...tx, $transaction: async (work: (value: typeof tx) => unknown) => work(tx) };
-    service = new PospalService(store as unknown as DataStoreService, client as unknown as PospalClientService, prisma as unknown as PrismaService);
+    service = new PospalService(store as unknown as DataStoreService, client as unknown as PospalClientService, prisma as unknown as PrismaService, photos);
   });
 
   it('reads the persisted UID, caches the snapshot and does not double-count gift money', async () => {

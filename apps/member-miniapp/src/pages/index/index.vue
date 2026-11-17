@@ -1,20 +1,13 @@
 <template>
   <view class="page">
-    <image class="page-bg" src="/static/brand/app-bg.jpg" mode="aspectFill" />
-    <view class="top-bar">
-      <view class="brand-lockup" @click="openAccountFromHeader">
-        <image class="brand-mark" :src="headerAvatarSrc" mode="aspectFill" />
-        <view>
-          <text class="brand">月光石屿MOONISLE</text>
-          <text class="hello">{{ welcomeText }}</text>
-        </view>
-      </view>
+    <image class="page-texture" src="/static/brand/app-bg.jpg" mode="aspectFill" aria-hidden="true" />
+    <view v-if="!sessionState.userId || !legalAccepted || needsPhoneSetup" class="guest-brand">
+      <image class="brand-mark" :src="brandAvatar" mode="aspectFill" />
+      <text>月光石屿 MOONISLE</text>
     </view>
 
     <view v-if="!sessionState.userId" class="entry-card">
-      <text class="entry-kicker">会员登录</text>
-      <text class="entry-title">进入我的账户</text>
-      <text class="entry-desc">登录后可查看会员卡、余额积分、消费记录和预约记录。</text>
+      <text class="entry-title">会员登录</text>
       <view class="legal-consent">
         <checkbox-group @change="handleLegalConsentChange">
           <label class="consent-label">
@@ -31,23 +24,22 @@
       <button
         class="primary-btn phone-login"
         open-type="getPhoneNumber|agreePrivacyAuthorization"
-        :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted"
+        :disabled="loggingIn || savingPhone || !legalAccepted"
         @getphonenumber="handleWechatPhone"
       >
         {{ savingPhone ? '登录中...' : '手机号授权登录' }}
       </button>
-      <button class="link-refresh password-entry" :disabled="loggingIn || savingPhone || linkBusy" @click="showPasswordLogin = !showPasswordLogin">账号密码登录</button>
+      <button class="link-refresh password-entry" :disabled="loggingIn || savingPhone" @click="showPasswordLogin = !showPasswordLogin">账号密码登录</button>
       <view v-if="showPasswordLogin" class="password-form">
-        <input v-model="loginUsername" class="phone-input" maxlength="32" placeholder="请输入账号" :disabled="loggingIn || savingPhone || linkBusy" />
-        <input v-model="loginPassword" class="phone-input" password maxlength="128" placeholder="请输入密码" :disabled="loggingIn || savingPhone || linkBusy" @confirm="handlePasswordLogin" />
+        <input v-model="loginUsername" class="phone-input" maxlength="32" placeholder="请输入账号" :disabled="loggingIn || savingPhone" />
+        <input v-model="loginPassword" class="phone-input" password maxlength="128" placeholder="请输入密码" :disabled="loggingIn || savingPhone" @confirm="handlePasswordLogin" />
         <text v-if="passwordError" class="password-error">{{ passwordError }}</text>
-        <button class="primary-btn" :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted" @click="handlePasswordLogin">{{ loggingIn ? '登录中...' : '登录账户' }}</button>
+        <button class="primary-btn" :disabled="loggingIn || savingPhone || !legalAccepted" @click="handlePasswordLogin">{{ loggingIn ? '登录中...' : '登录账户' }}</button>
       </view>
       <button class="link-refresh" @click="browseCatalog">先浏览作品</button>
     </view>
 
     <view v-else-if="!legalAccepted" class="entry-card">
-      <text class="entry-kicker">协议更新</text>
       <text class="entry-title">确认隐私与服务条款</text>
       <text class="entry-desc">继续使用前，请阅读并确认最新的隐私政策和用户协议。</text>
       <view class="legal-consent">
@@ -62,13 +54,11 @@
     </view>
 
     <view v-else-if="needsPhoneSetup" class="entry-card">
-      <text class="entry-kicker">首次使用</text>
-      <text class="entry-title">手机号授权登录</text>
-      <text class="entry-desc">用于门店会员核对和预约联系。</text>
+      <text class="entry-title">完成登录</text>
       <button
         class="primary-btn phone-login"
         open-type="getPhoneNumber|agreePrivacyAuthorization"
-        :disabled="loggingIn || savingPhone || linkBusy || !legalAccepted"
+        :disabled="loggingIn || savingPhone || !legalAccepted"
         @getphonenumber="handleWechatPhone"
       >
         {{ savingPhone ? '登录中...' : '手机号授权登录' }}
@@ -78,17 +68,12 @@
         <text class="entry-desc">已通过微信验证 {{ phoneRecovery.maskedPhone }}。</text>
         <template v-if="phoneRecovery.mode === 'SELF_SERVICE'">
           <text class="entry-desc">原账号没有余额、积分、业务记录或银豹关联。确认后将恢复原会员号，并更换为当前微信登录；原微信登录将失效。</text>
-          <button class="primary-btn" :disabled="savingPhone || linkBusy" @click="confirmRecovery">确认找回并登录</button>
+          <button class="primary-btn" :disabled="savingPhone" @click="confirmRecovery">确认找回并登录</button>
         </template>
-        <template v-else>
-          <text class="entry-desc">原会员资料需要门店核验。余额、积分和历史记录均保留在原会员，不会自动合并或覆盖。</text>
-          <text class="link-code" selectable>{{ phoneRecovery.code }}</text>
-          <text class="entry-desc">请仅向门店工作人员出示关联码，5 分钟内有效。门店核对身份后更换微信绑定。</text>
-          <button class="primary-btn" :disabled="savingPhone || linkBusy" @click="refreshLinkedMember">门店已确认，重新登录</button>
-        </template>
-        <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="clearPhoneRecovery">取消关联</button>
+        <text v-else class="entry-desc">这个手机号已有其他会员档案，请联系门店核对。</text>
+        <button class="link-refresh" :disabled="savingPhone" @click="clearPhoneRecovery">返回</button>
       </view>
-      <button class="link-refresh" :disabled="savingPhone || linkBusy" @click="showManualPhone = !showManualPhone">
+      <button class="link-refresh" :disabled="savingPhone" @click="showManualPhone = !showManualPhone">
         {{ showManualPhone ? '收起手动填写' : '手动填写手机号' }}
       </button>
       <view v-if="showManualPhone" class="phone-field">
@@ -101,74 +86,65 @@
           placeholder="请输入 11 位手机号"
         />
       </view>
-      <button v-if="showManualPhone" class="primary-btn" :disabled="savingPhone || linkBusy" @click="submitPhone">
+      <button v-if="showManualPhone" class="primary-btn" :disabled="savingPhone" @click="submitPhone">
         {{ savingPhone ? '保存中...' : '完成并进入' }}
       </button>
-      <button class="link-refresh password-entry" :disabled="savingPhone || linkBusy" @click="switchToPasswordLogin">账号密码登录</button>
+      <button class="link-refresh password-entry" :disabled="savingPhone" @click="switchToPasswordLogin">账号密码登录</button>
       <button class="link-refresh" @click="browseCatalog">先浏览作品</button>
     </view>
 
     <template v-else>
-      <view class="member-card" @click="openPage('/pages/card/card')">
-        <image class="card-bg" src="/static/brand/member-card-bg.jpg" mode="aspectFill" />
-        <view class="member-main">
-          <text class="card-label">我的会员卡</text>
-          <text class="card-title">{{ sessionState.profile?.levelName || '会员' }}</text>
-          <text class="card-desc">会员号：{{ memberNumber(sessionState.profile) }}</text>
-        </view>
-        <view class="discount-badge">
-          <text class="discount-value">{{ discountText(sessionState.profile?.discountRate) }}</text>
-          <text class="discount-label">会员折扣</text>
-        </view>
-      </view>
-
-      <AccountSyncStatus />
       <view class="stats-card">
-        <view class="stat" @click="openPage('/pages/card/card')">
-          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : `¥${formatMoney(sessionState.profile?.balance)}` }}</text>
-          <text class="stat-label">余额</text>
+        <image class="stats-texture" src="/static/brand/member-card-bg.jpg" mode="aspectFill" aria-hidden="true" />
+        <view class="stats-header">
+          <button class="member-identity" hover-class="tap-feedback" @click="openAccountFromHeader">
+            <image class="brand-mark" :src="headerAvatarSrc" mode="aspectFill" />
+            <text class="hello">{{ welcomeText }}</text>
+          </button>
+          <button
+            v-if="pospalLinked"
+            class="refresh-button"
+            hover-class="tap-feedback"
+            :disabled="profileRefreshState.loading"
+            aria-label="刷新余额与积分"
+            @click="refreshSessionProfile"
+          >{{ profileRefreshState.loading ? '刷新中' : '刷新' }}</button>
         </view>
-        <view class="divider" />
-        <view class="stat" @click="openPage('/pages/card/card')">
-          <text class="stat-value">{{ sessionState.profile?.pospal?.state === 'UNLINKED' ? '待关联' : sessionState.profile?.points || 0 }}</text>
-          <text class="stat-label">积分</text>
+
+        <view class="stats-values">
+          <button class="stat" hover-class="tap-feedback" @click="openPage('/pages/card/card')">
+            <text class="stat-label">余额</text>
+            <text class="stat-value">
+              <text v-if="!pospalUnlinked" class="stat-currency">¥</text>
+              {{ pospalUnlinked ? '—' : formatMoney(sessionState.profile?.balance) }}
+            </text>
+          </button>
+          <button class="stat" hover-class="tap-feedback" @click="openPage('/pages/card/card')">
+            <text class="stat-label">积分</text>
+            <text class="stat-value">{{ pospalUnlinked ? '—' : (sessionState.profile?.points ?? 0) }}</text>
+          </button>
         </view>
+
+        <text v-if="syncCaption" class="sync-caption">{{ syncCaption }}</text>
       </view>
 
-      <view class="section next-appointment">
-        <text class="section-title">下一次预约</text>
-        <text v-if="nextAppointmentLoading" class="entry-desc">正在查询预约...</text>
-        <view v-else-if="nextAppointmentError">
-          <text class="entry-desc">预约暂未更新，请重试。</text>
-          <button class="service-item" @click="loadNextAppointment">重新查询预约</button>
+      <view class="service-section">
+        <view class="section-heading">
+          <text class="section-title">我的服务</text>
+          <view class="section-rule" aria-hidden="true" />
         </view>
-        <view v-else-if="nextAppointment" @click="openPage('/pages/appointment/appointment')">
-          <text class="next-date">{{ nextAppointment.appointmentDate }} {{ nextAppointment.startTime }}</text>
-          <text class="next-title">{{ nextAppointment.productName || appointmentBusinessText(nextAppointment.businessType) }}</text>
-          <text class="next-status">{{ nextAppointment.status === 'PENDING' ? '待门店确认，请确认后再到店' : '预约已确认，按约到店' }}</text>
-          <button class="service-item" @click.stop="openPage('/pages/appointment/appointment')">查看预约详情</button>
-        </view>
-        <view v-else>
-          <text class="entry-desc">暂无待确认或已确认的到店安排。</text>
-          <button class="service-item" @click="openPage('/pages/appointment/appointment')">预约到店</button>
-        </view>
-      </view>
-
-      <StoreContact />
-
-      <view class="section">
-        <text class="section-title">我的服务</text>
         <view class="service-grid">
-          <button class="service-item" @click="openPage('/pages/appointment/appointment')">我的预约</button>
-          <button class="service-item" @click="openPage('/pages/styles/styles')">收藏与款式</button>
-          <button class="service-item" @click="openPage('/pages/consumptions/consumptions')">消费记录</button>
-          <button class="service-item" @click="openPage('/pages/recharge/recharge')">充值记录</button>
-          <button class="service-item" @click="openPage('/pages/account/account')">账户资料</button>
-          <button class="service-item" @click="openPage('/pages/messages/messages')">留言给门店</button>
+          <button
+            v-for="service in services"
+            :key="service.path"
+            class="service-item"
+            hover-class="tap-feedback"
+            @click="openPage(service.path)"
+          >
+            <text>{{ service.label }}</text>
+            <view class="service-chevron" aria-hidden="true" />
+          </button>
         </view>
-      </view>
-      <view v-if="needsProfileSetup" class="profile-tip" @click="openProfileSetup">
-        <text>头像与昵称可自行修改</text><text>去修改 ›</text>
       </view>
     </template>
   </view>
@@ -176,22 +152,18 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import StoreContact from '@/components/StoreContact.vue';
-import { nextMemberAppointment } from '@/utils/appointment-availability';
-import AccountSyncStatus from '@/components/AccountSyncStatus.vue';
-import { memberNumber } from '@/utils/member-display';
 import { resumePendingBooking } from '@/utils/booking-flow';
 import { onShow } from '@dcloudio/uni-app';
 import { sessionState, setProfile, setLoginSession, clearSession } from '@/store/session';
 import { beginPhoneRecovery, clearPhoneRecovery, phoneRecoveryState } from '@/utils/phone-recovery';
-import { bindWechatPhone, confirmPhoneRecovery, listMyAppointments, memberPasswordLogin, readableErrorMessage, updateMyProfile } from '@/utils/api';
-import type { Appointment, BusinessType } from '@member-platform/shared';
+import { bindWechatPhone, confirmPhoneRecovery, memberPasswordLogin, readableErrorMessage, updateMyProfile } from '@/utils/api';
 import { resolveImageForDisplay } from '@/utils/image-cache';
 import {
-  discountText,
   formatMoney,
   hasLegalConsent,
   loadSessionProfile,
+  profileRefreshState,
+  refreshSessionProfile,
   requireReadyMember,
   setLegalConsent,
   loginWithWechat,
@@ -204,53 +176,51 @@ const loginUsername = ref('');
 const loginPassword = ref('');
 const passwordError = ref('');
 const savingPhone = ref(false);
-const linkBusy = ref(false);
 const phoneInput = ref('');
 const showManualPhone = ref(false);
-const headerAvatarSrc = ref('/static/brand/logo-avatar-v2.png');
+const brandAvatar = '/static/brand/logo-avatar-v2.png';
+const headerAvatarSrc = ref(brandAvatar);
 const legalAccepted = ref(hasLegalConsent());
-const nextAppointment = ref<Appointment | null>(null);
-const nextAppointmentLoading = ref(false);
-const nextAppointmentError = ref('');
-let appointmentRevision = 0;
-watch(() => [sessionState.userId, sessionState.token], () => {
-  appointmentRevision++;
-  nextAppointment.value = null;
-  nextAppointmentLoading.value = false;
-  nextAppointmentError.value = '';
-}, { flush: 'sync' });
 
-function appointmentBusinessText(type: BusinessType): string {
-  return { NAIL: '美甲预约', ACCESSORY: '饰品预留', FLOWER: '取花预约' }[type];
-}
+const services = [
+  { label: '我的预约', path: '/pages/appointment/appointment' },
+  { label: '收藏与款式', path: '/pages/styles/styles' },
+  { label: '消费记录', path: '/pages/consumptions/consumptions' },
+  { label: '充值记录', path: '/pages/recharge/recharge' },
+  { label: '账户资料', path: '/pages/account/account' },
+  { label: '留言给门店', path: '/pages/messages/messages' },
+];
 
-async function loadNextAppointment() {
-  const request = ++appointmentRevision;
-  nextAppointment.value = null;
-  nextAppointmentError.value = '';
-  if (!sessionState.userId || !sessionState.token || !hasLegalConsent()) return;
-  nextAppointmentLoading.value = true;
-  try {
-    const records = await listMyAppointments();
-    if (request === appointmentRevision) nextAppointment.value = nextMemberAppointment(records);
-  } catch (error) {
-    if (request === appointmentRevision) nextAppointmentError.value = readableErrorMessage(error, '预约加载失败');
-  } finally {
-    if (request === appointmentRevision) nextAppointmentLoading.value = false;
-  }
-}
+watch(() => [sessionState.userId, sessionState.profile?.avatarUrl] as const, async ([, avatar], _previous, onCleanup) => {
+  let current = true;
+  onCleanup(() => { current = false; });
+  headerAvatarSrc.value = brandAvatar;
+  if (!avatar) return;
+  const display = await resolveImageForDisplay(avatar, brandAvatar);
+  if (current) headerAvatarSrc.value = display;
+}, { immediate: true });
 
 const welcomeText = computed(() => {
   const nickname = sessionState.profile?.nickname;
-  return nickname && nickname !== '微信用户' ? nickname : sessionState.userId ? '欢迎来到月光石屿' : '我的';
+  return nickname && nickname !== '微信用户' ? nickname : '月光会员';
 });
 const needsPhoneSetup = computed(() => Boolean(sessionState.userId && !sessionState.profile?.phone && sessionState.loginMethod !== 'password'));
-const needsProfileSetup = computed(() => Boolean(sessionState.profile &&
-  (!sessionState.profile.avatarUrl || sessionState.profile.nickname === '微信用户')));
-
-function openProfileSetup() {
-  uni.navigateTo({ url: '/pages/account/account?setup=1' });
-}
+const pospalLinked = computed(() => sessionState.profile?.pospal?.state === 'LINKED');
+const pospalUnlinked = computed(() => sessionState.profile?.pospal?.state === 'UNLINKED');
+const syncCaption = computed(() => {
+  const pospal = sessionState.profile?.pospal;
+  if (pospalUnlinked.value) {
+    const state = pospal?.memberSync?.state;
+    return state === 'PENDING' || state === 'RUNNING' ? '会员同步中' : '会员待关联';
+  }
+  if (profileRefreshState.errorMessage) return '刷新失败，请重试';
+  if (!pospal?.syncedAt) return '';
+  const updatedAt = new Date(pospal.syncedAt);
+  if (Number.isNaN(updatedAt.getTime())) return '';
+  const hours = String(updatedAt.getHours()).padStart(2, '0');
+  const minutes = String(updatedAt.getMinutes()).padStart(2, '0');
+  return `更新于 ${updatedAt.getMonth() + 1}/${updatedAt.getDate()} ${hours}:${minutes}`;
+});
 
 function browseCatalog() {
   uni.switchTab({ url: '/pages/nail/nail' });
@@ -265,7 +235,7 @@ function switchToPasswordLogin() {
 }
 
 async function handlePasswordLogin() {
-  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
+  if (loggingIn.value || savingPhone.value) return;
   passwordError.value = '';
   if (!legalAccepted.value) { passwordError.value = '请先阅读并同意协议'; return; }
   const username = loginUsername.value.trim();
@@ -276,7 +246,6 @@ async function handlePasswordLogin() {
     setLoginSession(response);
     showPasswordLogin.value = false;
     loginUsername.value = '';
-    void loadNextAppointment();
     resumePendingBooking();
   } catch (error) {
     passwordError.value = readableErrorMessage(error, '登录未完成');
@@ -291,7 +260,6 @@ function handleLegalConsentChange(event: { detail: { value: string[] } }) {
 function acceptLegalTerms() {
   legalAccepted.value = true;
   setLegalConsent(true);
-  void loadNextAppointment();
   resumePendingBooking();
 }
 
@@ -300,7 +268,7 @@ function completeEntry() {
 }
 
 async function handleWechatPhone(event: { detail: { code?: string; errMsg?: string; errno?: number } }) {
-  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
+  if (loggingIn.value || savingPhone.value) return;
   if (!legalAccepted.value || !hasLegalConsent()) {
     uni.showToast({ title: '请先阅读并同意协议', icon: 'none' });
     return;
@@ -327,7 +295,6 @@ async function handleWechatPhone(event: { detail: { code?: string; errMsg?: stri
     showManualPhone.value = false;
     clearPhoneRecovery();
     uni.showToast({ title: '登录成功', icon: 'success' });
-    void loadNextAppointment();
     completeEntry();
   } catch (error) {
     if (beginPhoneRecovery(error)) { showManualPhone.value = false; return; }
@@ -340,7 +307,7 @@ async function handleWechatPhone(event: { detail: { code?: string; errMsg?: stri
 
 async function confirmRecovery() {
   const challenge = phoneRecovery.value;
-  if (!challenge || challenge.mode !== 'SELF_SERVICE' || savingPhone.value || linkBusy.value) return;
+  if (!challenge || challenge.mode !== 'SELF_SERVICE' || savingPhone.value) return;
   savingPhone.value = true;
   try {
     const response = await confirmPhoneRecovery(challenge.code);
@@ -348,7 +315,6 @@ async function confirmRecovery() {
     clearPhoneRecovery();
     phoneInput.value = response.user.phone || '';
     uni.showToast({ title: '已找回原会员', icon: 'success' });
-    void loadNextAppointment();
     completeEntry();
   } catch (error) {
     clearPhoneRecovery();
@@ -357,7 +323,7 @@ async function confirmRecovery() {
 }
 
 async function submitPhone() {
-  if (savingPhone.value || linkBusy.value) return;
+  if (savingPhone.value) return;
   const phone = phoneInput.value.trim();
   if (!/^1[3-9]\d{9}$/.test(phone)) {
     uni.showToast({ title: '请输入正确手机号', icon: 'none' });
@@ -374,7 +340,7 @@ async function submitPhone() {
     if (message.includes('手机号已被其他会员使用')) {
       uni.showModal({
         title: '手机号已使用',
-        content: '该手机号已有会员。手动填写不能证明手机号归属，请使用上方手机号授权登录，再选择找回或到店核验关联。',
+        content: '该手机号已有会员。请使用上方的手机号授权登录，按页面提示继续。',
         confirmText: '去微信验证',
         cancelText: '稍后处理',
         success: (result) => { if (result.confirm) { showManualPhone.value = false; clearPhoneRecovery(); } },
@@ -387,33 +353,13 @@ async function submitPhone() {
   }
 }
 
-async function refreshLinkedMember() {
-  if (linkBusy.value) return;
-  linkBusy.value = true;
-  try {
-    await loginWithWechat();
-    if (sessionState.profile?.phone) {
-      clearPhoneRecovery();
-      uni.showToast({ title: '已关联会员', icon: 'success' });
-      void loadNextAppointment();
-      resumePendingBooking();
-    } else {
-      uni.showToast({ title: '等待门店确认', icon: 'none' });
-    }
-  } catch (error) {
-    uni.showModal({ title: '查询未完成', content: readableErrorMessage(error), showCancel: false });
-  } finally {
-    linkBusy.value = false;
-  }
-}
-
 function openPage(url: string) {
   if (!requireReadyMember()) return;
   uni.navigateTo({ url });
 }
 
 async function openAccountFromHeader() {
-  if (loggingIn.value || savingPhone.value || linkBusy.value) return;
+  if (loggingIn.value || savingPhone.value) return;
   if (!sessionState.userId) {
     uni.showToast({ title: '请点击手机号授权登录', icon: 'none' });
     return;
@@ -434,12 +380,7 @@ onShow(async () => {
   legalAccepted.value = hasLegalConsent();
   await loadSessionProfile();
   phoneInput.value = sessionState.profile?.phone || phoneInput.value;
-  if (resumePendingBooking()) return;
-  void loadNextAppointment();
-  headerAvatarSrc.value = await resolveImageForDisplay(
-    sessionState.profile?.avatarUrl,
-    '/static/brand/logo-avatar-v2.png',
-  );
+  resumePendingBooking();
 });
 </script>
 
@@ -449,9 +390,26 @@ onShow(async () => {
 .password-error { color: #a33e3e; font-size: 24rpx; line-height: 1.6; }
 .page {
   position: relative;
+  box-sizing: border-box;
   min-height: 100vh;
-  padding: 32rpx 24rpx 48rpx;
-  background: #f7f4ef;
+  padding: 28rpx 28rpx 46rpx;
+  background: linear-gradient(165deg, #fbf8f1 0%, #f7f4ef 54%, #edf0f1 100%);
+}
+
+.page-texture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.27;
+  pointer-events: none;
+}
+
+.guest-brand,
+.entry-card,
+.stats-card,
+.service-section {
+  position: relative;
 }
 
 .member-link {
@@ -459,14 +417,6 @@ onShow(async () => {
   padding-top: 28rpx;
   border-top: 1px solid #dbe1e5;
   text-align: center;
-}
-
-.link-code {
-  display: block;
-  margin-top: 16rpx;
-  font-size: 48rpx;
-  font-weight: 700;
-  color: #273247;
 }
 
 .link-refresh {
@@ -478,79 +428,30 @@ onShow(async () => {
 
 .link-refresh::after { border: 0; }
 
-.page-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  width: 100vw;
-  height: 100vh;
-  pointer-events: none;
-}
-
-.top-bar,
-.entry-card,
-.member-card,
-.stats-card,
-.section {
-  position: relative;
-  z-index: 1;
-}
-
-.top-bar,
-.brand-lockup {
+.guest-brand {
   display: flex;
   align-items: center;
-}
-
-.top-bar {
-  justify-content: space-between;
-}
-
-.brand-lockup {
-  gap: 18rpx;
-  min-width: 0;
+  gap: 16rpx;
+  margin-bottom: 28rpx;
+  color: #3d4652;
+  font-size: 26rpx;
+  font-weight: 600;
 }
 
 .brand-mark {
-  width: 82rpx;
-  height: 82rpx;
-  flex: 0 0 82rpx;
+  width: 58rpx;
+  height: 58rpx;
+  flex: 0 0 58rpx;
   border-radius: 50%;
-  box-shadow: 0 12rpx 30rpx rgba(18, 24, 38, 0.16);
+  background: #fff;
 }
 
-.brand,
-.hello {
-  display: block;
-}
-
-.brand {
-  color: #273247;
-  font-size: 28rpx;
-  font-weight: 800;
-}
-
-.hello {
-  margin-top: 8rpx;
-  color: #111827;
-  font-size: 38rpx;
-  font-weight: 900;
-}
-
-.entry-card,
-.section,
-.stats-card {
-  margin-top: 30rpx;
-  border-radius: 32rpx;
-  padding: 34rpx;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 18rpx 54rpx rgba(31, 41, 55, 0.08);
-}
-
-.entry-kicker {
-  color: #72818d;
-  font-size: 23rpx;
-  font-weight: 900;
+.entry-card {
+  border-radius: 30rpx;
+  padding: 30rpx;
+  background: linear-gradient(145deg, #fffefa 0%, #faf7f1 100%);
+  border: 1px solid #e8e0d3;
+  box-shadow: 0 12rpx 30rpx rgba(75, 69, 57, 0.07);
 }
 
 .entry-title {
@@ -615,7 +516,7 @@ onShow(async () => {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8rpx;
-  color: #98a2b3;
+  color: #596873;
   font-size: 22rpx;
 }
 
@@ -629,129 +530,176 @@ onShow(async () => {
 }
 
 .legal-link {
-  color: #6f7f8a;
-}
-
-.member-card {
-  overflow: hidden;
-  margin-top: 32rpx;
-  min-height: 220rpx;
-  border-radius: 36rpx;
-  padding: 38rpx;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  background: #edf2f4;
-  color: #3d4652;
-  box-shadow: 0 28rpx 70rpx rgba(87, 101, 116, 0.16);
-}
-
-.card-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.96;
-}
-
-.member-main,
-.discount-badge {
-  position: relative;
-  z-index: 1;
-}
-
-.card-label,
-.card-desc,
-.discount-label,
-.stat-label {
-  font-size: 24rpx;
-  opacity: 0.78;
-}
-
-.card-title {
-  display: block;
-  margin-top: 18rpx;
-  font-size: 44rpx;
-  font-weight: 900;
-}
-
-.card-desc {
-  display: block;
-  margin-top: 18rpx;
-}
-
-.discount-badge {
-  width: 148rpx;
-  height: 148rpx;
-  border-radius: 50%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.42);
-}
-
-.discount-value {
-  font-size: 30rpx;
-  font-weight: 900;
+  color: #475e6a;
 }
 
 .stats-card {
+  padding: 18rpx 32rpx 28rpx;
+  overflow: hidden;
+  border: 1px solid #d7dddc;
+  border-radius: 32rpx;
+  background: linear-gradient(145deg, #fbf8ef 0%, #edf1f0 54%, #e3ebef 100%);
+  box-shadow: 0 12rpx 30rpx rgba(63, 78, 84, 0.09);
+}
+
+.stats-texture {
+  position: absolute;
+  top: -5%;
+  left: -5%;
+  width: 110%;
+  height: 110%;
+  opacity: 0.43;
+  pointer-events: none;
+}
+
+.stats-header,
+.stats-values,
+.sync-caption {
+  position: relative;
+}
+
+.stats-header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 18rpx;
+  gap: 16rpx;
+}
+
+.member-identity,
+.refresh-button,
+.stat,
+.service-item {
+  margin: 0;
+  padding: 0;
+  color: #2b353b;
+  line-height: 1.35;
+  text-align: left;
+  background: transparent;
+  touch-action: manipulation;
+}
+
+.member-identity::after,
+.refresh-button::after,
+.stat::after,
+.service-item::after { border: 0; }
+
+.member-identity {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14rpx;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.hello {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.refresh-button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 44px;
+  border-radius: 18rpx;
+  color: #465b62;
+  font-size: 25rpx;
+}
+.refresh-button[disabled] { color: #52666d; background: transparent; }
+
+.stats-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 12rpx;
+  padding-top: 22rpx;
+  border-top: 1px solid rgba(86, 104, 108, 0.17);
 }
 
 .stat {
-  flex: 1;
+  display: block;
+  width: 100%;
   min-width: 0;
-  text-align: center;
+  min-height: 44px;
+  border-radius: 12rpx;
+}
+.stat + .stat {
+  padding-left: 28rpx;
+  border-left: 1px solid rgba(86, 104, 108, 0.17);
+  border-radius: 0 12rpx 12rpx 0;
 }
 
+.stat-label,
+.stat-value { display: block; }
+.stat-label { color: #4e6169; font-size: 25rpx; }
 .stat-value {
-  display: block;
-  color: #111827;
-  font-size: 28rpx;
-  font-weight: 900;
-  word-break: break-all;
-}
-
-.stat-label {
-  display: block;
   margin-top: 8rpx;
-  color: #667085;
+  color: #27363e;
+  font-size: 46rpx;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
+.stat-currency { margin-right: 4rpx; font-size: 28rpx; }
+.sync-caption { display: block; margin-top: 16rpx; color: #50636a; font-size: 23rpx; }
 
-.divider {
-  width: 1px;
-  background: #edf2f4;
+.service-section { margin-top: 35rpx; }
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin: 0 2rpx 18rpx;
 }
 
 .section-title {
-  display: block;
-  color: #111827;
-  font-size: 32rpx;
-  font-weight: 900;
+  color: #2b353b;
+  font-size: 31rpx;
+  font-weight: 650;
+}
+
+.section-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(164, 139, 91, 0.48), rgba(164, 139, 91, 0.05));
 }
 
 .service-grid {
-  margin-top: 20rpx;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18rpx;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
 }
 
 .service-item {
-  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 50px;
+  padding: 20rpx 24rpx;
+  border: 1px solid rgba(102, 122, 130, 0.22);
   border-radius: 24rpx;
-  background: #f8fafc;
-  color: #3d4652;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.62), rgba(249, 251, 251, 0.16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 3rpx 10rpx rgba(51, 72, 83, 0.035);
   font-size: 27rpx;
-  font-weight: 900;
+  font-weight: 550;
 }
-.next-date, .next-title, .next-status { display: block; margin-top: 14rpx; }
-.next-date { color: #273247; font-size: 34rpx; font-weight: 800; }
-.next-title { color: #3d4652; font-size: 28rpx; }
-.next-status { margin-bottom: 20rpx; color: #72818d; font-size: 24rpx; line-height: 1.5; }
-.profile-tip { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 20rpx; padding: 28rpx 12rpx; color: #72818d; font-size: 24rpx; }
+
+.service-chevron {
+  width: 9rpx;
+  height: 9rpx;
+  flex: 0 0 9rpx;
+  border-top: 1px solid #677780;
+  border-right: 1px solid #677780;
+  transform: rotate(45deg);
+}
+
+.tap-feedback { background: rgba(70, 93, 101, 0.08); }
+.service-item.tap-feedback { background: rgba(99, 129, 142, 0.16); }
 </style>

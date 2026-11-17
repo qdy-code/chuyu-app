@@ -23,6 +23,7 @@ const errorMessage = ref('');
 const identityVerified = ref(false);
 const linking = ref(false);
 const linkedNumber = ref('');
+const queued = ref(false);
 const message = useMessage();
 const ready = computed(() => configuration.value?.enabled && configuration.value?.configured);
 const busy = computed(() => loading.value || checking.value || comparing.value || linking.value);
@@ -37,7 +38,7 @@ const previewMessages = {
   CANDIDATE: '已找到同手机号的候选会员。请核对身份；当前结果仅供查看，不会修改余额或积分。',
 };
 
-watch(selectedMember, () => { preview.value = null; errorMessage.value = ''; identityVerified.value = false; linkedNumber.value = ''; });
+watch(selectedMember, () => { preview.value = null; errorMessage.value = ''; identityVerified.value = false; linkedNumber.value = ''; queued.value = false; });
 
 async function loadStatus() {
   loading.value = true;
@@ -67,6 +68,7 @@ async function compareMember() {
   preview.value = null;
   identityVerified.value = false;
   linkedNumber.value = '';
+  queued.value = false;
   try {
     const result = await api.previewPospalMember(memberId);
     if (selectedMember.value === memberId) preview.value = result;
@@ -86,6 +88,20 @@ async function linkCandidate(customerUid: string) {
     await loadAll();
     message.success('银豹会员已关联');
   } catch (error) { errorMessage.value = readableErrorMessage(error, '银豹会员关联失败'); }
+  finally { linking.value = false; }
+}
+
+async function queueMember() {
+  const memberId = selectedMember.value;
+  if (!memberId || !identityVerified.value || preview.value?.state !== 'NOT_FOUND') return;
+  linking.value = true;
+  errorMessage.value = '';
+  try {
+    await api.confirmPospalSync(memberId);
+    queued.value = true;
+    await loadJobs();
+    message.success('已加入银豹同步队列');
+  } catch (error) { errorMessage.value = readableErrorMessage(error, '无法提交银豹开户同步'); }
   finally { linking.value = false; }
 }
 
@@ -115,13 +131,13 @@ onMounted(() => { void loadStatus(); void loadJobs(); });
     </NCard>
     <NCard title="会员同步">
       <NSpace vertical>
-        <NAlert type="info">注册后后台同步会员，店内收款无需等待。美甲、饰品、鲜花优惠请分别在银豹配置；这里不修改折扣或资金。</NAlert>
+        <NAlert type="info">顾客微信授权手机号后，自动关联银豹中唯一、有效且未绑定的同号会员。后台手动建档如遇已有同号会员，请核对后关联。</NAlert>
         <p class="hint">{{ configuration?.memberSyncEnabled ? '后台会员同步已启用' : '后台会员同步尚未启用，任务会保留等待处理' }}</p>
         <NButton @click="loadJobs">刷新同步任务</NButton>
         <NTable v-if="jobs.length"><thead><tr><th>小程序会员</th><th>开户编号</th><th>状态</th><th>说明</th><th>处理</th></tr></thead>
           <tbody><tr v-for="job in jobs" :key="job.memberId"><td>{{ job.memberId }}</td><td>{{ job.customerNumber }}</td><td>{{ syncLabels[job.state] || job.state }}</td><td>{{ job.lastError || '—' }}</td><td><NButton v-if="['FAILED', 'REVIEW'].includes(job.state)" size="small" @click="retryJob(job.memberId)">重新核对并同步</NButton></td></tr></tbody>
         </NTable>
-        <p v-else class="hint">暂无同步任务。现有用户可重新微信授权手机号后加入队列；手填手机号需门店核实关联。</p>
+        <p v-else class="hint">暂无同步任务。已手动建档的会员可在下方核对后补同步。</p>
       </NSpace>
     </NCard>
     <NCard title="会员核对">
@@ -139,7 +155,9 @@ onMounted(() => { void loadStatus(); void loadJobs(); });
             <td><NButton size="small" :disabled="!identityVerified || busy || !!linkedNumber" @click="linkCandidate(candidate.uid)">关联此会员</NButton></td>
           </tr></tbody>
         </NTable>
-        <NCheckbox v-if="preview?.candidates.length" v-model:checked="identityVerified" :disabled="busy || !!linkedNumber">已核实会员本人身份，并确认所选银豹会员属于该顾客</NCheckbox>
+        <NCheckbox v-if="preview?.candidates.length || preview?.state === 'NOT_FOUND'" v-model:checked="identityVerified" :disabled="busy || !!linkedNumber || queued">{{ preview?.state === 'NOT_FOUND' ? '已核实顾客本人身份及预留手机号，确认同步开户到银豹' : '已核实会员本人身份，并确认所选银豹会员属于该顾客' }}</NCheckbox>
+        <NButton v-if="preview?.state === 'NOT_FOUND'" type="primary" :loading="linking" :disabled="!identityVerified || busy || queued" @click="queueMember">同步开户到银豹</NButton>
+        <NAlert v-if="queued" type="success">已加入同步队列，请在上方刷新同步任务。同步前会再次核对银豹，避免重复开户。</NAlert>
         <NAlert v-if="linkedNumber" type="success">已关联银豹会员号 {{ linkedNumber }}。</NAlert>
         <NDescriptions v-if="preview?.difference" bordered :column="1">
           <NDescriptionsItem label="小程序当前余额">¥{{ formatMoney(preview.local.balance) }}</NDescriptionsItem>

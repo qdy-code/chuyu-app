@@ -19,8 +19,12 @@ export class MemberAuthMiddleware implements NestMiddleware {
     if (!member || member.deletedAt || (payload.version || 0) !== (member.authVersion || 0)) throw new UnauthorizedException('invalid or expired token');
 
     if (payload.method === 'password') {
-      const credential = await this.prisma.memberCredential.findUnique({ where: { memberId: payload.sub }, select: { enabled: true } });
-      if (!credential?.enabled) throw new UnauthorizedException('invalid or expired token');
+      const credential = await this.prisma.memberCredential.findUnique({
+        where: { memberId: payload.sub }, select: { enabled: true, sessionVersion: true },
+      });
+      if (!credential?.enabled || (credential.sessionVersion ?? 0) !== (payload.credentialVersion ?? 0)) {
+        throw new UnauthorizedException('invalid or expired token');
+      }
       // Password possession does not prove the WeChat identity of the caller.
       const path = decodeURIComponent(req.originalUrl.split('?')[0]).toLowerCase().replace(/\/+$/, '');
       const identityMutation = req.method !== 'GET' && (

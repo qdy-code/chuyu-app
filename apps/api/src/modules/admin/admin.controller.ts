@@ -82,8 +82,8 @@ export class AdminController {
   }
 
   @Post('members')
-  async createMember(@Body() payload: CreateMemberDto): Promise<MemberProfile> {
-    const result = await this.store.createMember(payload);
+  async createMember(@Body() payload: CreateMemberDto, @Headers('x-admin-id') adminId: string): Promise<MemberProfile> {
+    const result = await this.store.createMember(payload, adminId);
     if (!result.member) {
       throw new BadRequestException(result.reason || 'failed to create member');
     }

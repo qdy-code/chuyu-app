@@ -151,4 +151,41 @@ describe('phone conflict recovery (isolated PostgreSQL, simulated WeChat, no POS
     expect((await db.member.findUniqueOrThrow({ where: { id: target.id } })).authVersion).toBe(1);
     expect(await db.auditLog.count({ where: { action: 'member.wechat.recover', targetId: target.id } })).toBe(1);
   });
+
+  it('claims a same-phone store-created member in one authorization while preserving the original account and password', async () => {
+    const source = await store.loginByWechat({ code: 'first-wechat-visit' });
+    const offline = await store.createMember({ phone, nickname: '门店原会员', balance: 60, points: 15 });
+    const id = offline.member!.id;
+    await db.pospalMemberLink.create({ data: { memberId: id, account: 'isolated-store', customerUid: '201', customerNumber: 'ORIGINAL' } });
+    await db.memberCredential.create({ data: { memberId: id, username: 'offline_password', passwordHash: 'unused-test-hash' } });
+    await db.memberMessage.create({ data: { id: 'offline-history-message', userId: id, content: '原留言记录' } });
+    const before = await allAssets(id);
+    const password = await db.memberCredential.findUnique({ where: { memberId: id } });
+    const expiredSourceToken = signToken(source.id, 'member');
+    const response = await request(app.getHttpServer()).put('/members/me/phone').set(auth(source.id))
+      .set('X-Accept-Member-Session', '1').send({ code: 'actual-wechat-phone-code' }).expect(200);
+
+    expect(response.body).toMatchObject({ id, phone, balance: 60, points: 15, nickname: '门店原会员', sessionToken: expect.any(String) });
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    const after = await allAssets(id);
+    expect(after.member.phoneVerifiedAt).toBeInstanceOf(Date);
+    expect({ ...after, member: { ...after.member, phoneVerifiedAt: before.member.phoneVerifiedAt } }).toEqual(before);
+    expect(await db.memberCredential.findUnique({ where: { memberId: id } })).toEqual(password);
+    const me = await request(app.getHttpServer()).get('/members/me/cached-profile').auth(response.body.sessionToken, { type: 'bearer' }).expect(200);
+    expect(me.body.id).toBe(id);
+    await request(app.getHttpServer()).get('/members/me/cached-profile').auth(expiredSourceToken, { type: 'bearer' }).expect(401);
+    expect((await store.loginByWechat({ code: 'first-wechat-visit' })).id).toBe(id);
+  });
+
+  it.each(['legacy', 'already-bound', 'custom-source'] as const)('keeps the %s case on the existing recovery path', async (scenario) => {
+    const { member } = await store.createMember({ phone, nickname: '原有档案' });
+    const source = await store.loginByWechat({ code: 'wechat-claim-exception' });
+    if (scenario === 'already-bound') await db.member.update({ where: { id: member!.id }, data: { openId: 'existing-wechat-owner', phoneVerifiedAt: new Date() } });
+    if (scenario === 'custom-source') await db.member.update({ where: { id: source.id }, data: { nickname: '已设置的昵称' } });
+    const before = await db.member.findUnique({ where: { id: member!.id } });
+    const result = await request(app.getHttpServer()).put('/members/me/phone').set(auth(source.id))
+      .set('X-Accept-Member-Session', scenario === 'legacy' ? '0' : '1').send({ code: 'actual-wechat-phone-code' }).expect(409);
+    expect(result.body.phoneRecovery.mode).toBe('STORE_REVIEW');
+    expect(await db.member.findUnique({ where: { id: member!.id } })).toEqual(before);
+  });
 });

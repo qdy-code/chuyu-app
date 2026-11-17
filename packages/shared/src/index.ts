@@ -74,6 +74,7 @@ export interface CreateMemberRequest {
   nickname: string;
   remark?: string;
   phone?: string;
+  identityVerified?: boolean;
   birthday?: string;
   levelId?: string;
   discountRate?: number;
@@ -147,6 +148,10 @@ export interface BindWechatPhoneRequest {
   mockPhone?: string;
 }
 
+export interface BindWechatPhoneResponse extends MemberProfile {
+  sessionToken?: string;
+}
+
 export interface RechargeApplyRequest {
   amount: number;
   remark?: string;
@@ -201,6 +206,7 @@ export interface ConsumptionOrder {
   finalPrice: number;
   discountRate: number;
   effectImages: string[];
+  consumptionPhotos?: { id: string; url: string }[];
   orderDate: string;
   remark?: string;
   createdBy: string;
