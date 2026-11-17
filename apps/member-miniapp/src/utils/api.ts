@@ -2,6 +2,7 @@ import type {
   Appointment,
   AppointmentUnavailableDate,
   BookedAppointmentSlot,
+  BindWechatPhoneResponse,
   BusinessType,
   CatalogProduct,
   ConsumptionOrder,
@@ -16,7 +17,7 @@ import type {
   UpdateMyProfileRequest,
 } from '@member-platform/shared';
 import { PhoneConflictError } from '@/utils/phone-conflict';
-import { clearSession, sessionState } from '@/store/session';
+import { clearSession, sessionState, setLoginSession } from '@/store/session';
 
 const CONFIGURED_API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL as string | undefined);
 const DEVTOOLS_API_BASE = normalizeApiBase(import.meta.env.VITE_DEVTOOLS_API_BASE_URL as string | undefined);
@@ -213,11 +214,16 @@ export function getMyCachedProfile(): Promise<MemberProfile> {
   return request<MemberProfile>('/members/me/cached-profile');
 }
 
-export function bindWechatPhone(code: string): Promise<MemberProfile> {
-  return request<MemberProfile>('/members/me/phone', {
+export async function bindWechatPhone(code: string): Promise<MemberProfile> {
+  const originalToken = sessionState.token;
+  const { sessionToken, ...profile } = await request<BindWechatPhoneResponse>('/members/me/phone', {
     method: 'PUT',
+    headers: { 'X-Accept-Member-Session': '1' },
     body: JSON.stringify({ code }),
   });
+  if (sessionState.token !== originalToken) throw new Error('登录状态已变更，请重新登录');
+  if (sessionToken) setLoginSession({ token: sessionToken, user: profile });
+  return profile;
 }
 
 export function confirmPhoneRecovery(code: string): Promise<LoginResponse> {

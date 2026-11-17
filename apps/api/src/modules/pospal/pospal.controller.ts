@@ -1,6 +1,6 @@
 import { PospalMemberSyncService } from './pospal-member-sync.service';
 import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
-import { LinkPospalMemberDto } from './dto';
+import { ConfirmPospalMemberSyncDto, LinkPospalMemberDto } from './dto';
 import { PospalClientService } from './pospal-client.service';
 import { PospalService } from './pospal.service';
 
@@ -27,6 +27,11 @@ export class PospalController {
   @Post('members/:id/preview')
   previewMember(@Param('id') memberId: string) {
     return this.pospal.previewMember(memberId);
+  }
+
+  @Post('members/:id/sync')
+  confirmAndQueue(@Param('id') memberId: string, @Headers('x-admin-id') adminId: string, @Body() payload: ConfirmPospalMemberSyncDto) {
+    return this.sync.confirmAndQueue(memberId, adminId, payload.identityVerified);
   }
 
   @Post('members/:id/link')

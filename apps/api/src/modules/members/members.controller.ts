@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpException,
   Headers,
   NotFoundException,
@@ -20,6 +21,7 @@ import sharp from 'sharp';
 import { v4 as uuid } from 'uuid';
 import {
   Appointment,
+  BindWechatPhoneResponse,
   AppointmentUnavailableDate,
   BookedAppointmentSlot,
   BUSINESS_TYPE,
@@ -138,16 +140,22 @@ export class MembersController {
   }
 
   @Patch('me/phone')
+  @Header('Cache-Control', 'private, no-store')
   async bindWechatPhone(
     @Headers('x-user-id') userId: string | undefined,
     @Body() payload: BindWechatPhoneDto,
-  ): Promise<MemberProfile> {
+    @Headers('x-accept-member-session') acceptMemberSession?: string,
+  ): Promise<BindWechatPhoneResponse> {
     if (!userId) {
       throw new NotFoundException('member not found');
     }
 
     const phone = await this.wechatMiniapp.resolvePhoneNumber(payload.code, payload.mockPhone);
-    const result = await this.store.updateMemberSelf(userId, { phone }, process.env.MINIAPP_LOGIN_MODE !== 'mock');
+    const verified = process.env.MINIAPP_LOGIN_MODE !== 'mock';
+    const supportsNewSession = process.env.MINIAPP_LOGIN_MODE === 'real' && acceptMemberSession === '1';
+    const result = supportsNewSession
+      ? await this.store.updateMemberSelf(userId, { phone }, verified, true)
+      : await this.store.updateMemberSelf(userId, { phone }, verified);
     if (!result.member) {
       if (result.reason === 'member not found') {
         throw new NotFoundException(result.reason);
@@ -158,16 +166,22 @@ export class MembersController {
       }
       throw new BadRequestException(result.reason || 'failed to bind phone');
     }
-    return this.pospal.cachedAccountProfile(userId);
+    const profile = await this.pospal.cachedAccountProfile(result.member.id);
+    if (result.sessionAuthVersion !== undefined) {
+      return { ...profile, sessionToken: signToken(profile.id, 'member', undefined, result.sessionAuthVersion) };
+    }
+    return profile;
   }
 
   // uni.request on WeChat supports PUT; retain PATCH for existing clients.
   @Put('me/phone')
+  @Header('Cache-Control', 'private, no-store')
   bindWechatPhoneWithPut(
     @Headers('x-user-id') userId: string | undefined,
     @Body() payload: BindWechatPhoneDto,
-  ): Promise<MemberProfile> {
-    return this.bindWechatPhone(userId, payload);
+    @Headers('x-accept-member-session') acceptMemberSession?: string,
+  ): Promise<BindWechatPhoneResponse> {
+    return this.bindWechatPhone(userId, payload, acceptMemberSession);
   }
 
   @Post('me/phone-recovery/confirm')

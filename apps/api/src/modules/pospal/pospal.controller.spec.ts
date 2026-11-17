@@ -39,6 +39,7 @@ describe('Pospal controller authentication (actual AppModule, mocked storage and
       await request(app.getHttpServer()).get('/admin/pospal/status').set(headers).expect(401);
       await request(app.getHttpServer()).post('/admin/pospal/connection-test').set(headers).expect(401);
       await request(app.getHttpServer()).post('/admin/pospal/members/MI1/preview').set(headers).expect(401);
+      await request(app.getHttpServer()).post('/admin/pospal/members/MI1/sync').set(headers).send({ identityVerified: true }).expect(401);
       await request(app.getHttpServer()).post('/admin/pospal/members/MI1/link').set(headers).send({ customerUid: '101', identityVerified: true }).expect(401);
     }
     expect(checkConnection).not.toHaveBeenCalled();

@@ -20,7 +20,6 @@ import type {
   PospalConfiguration,
   PospalConnectionCheck,
   PospalMemberPreview,
-  ConfirmMemberLinkRequest,
   ProductCategory,
   ProductType,
   RechargeOrder,
@@ -144,9 +143,9 @@ export function readableErrorMessage(error: unknown, fallback = '操作失败'):
   return message || fallback;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   // 注意顺序：必须先把 init 展开，再覆盖 headers，否则 init.headers 会反过来覆盖
   // 我们合并好的（含 Authorization）headers —— 这就是之前 PATCH/POST 必现 401 的根因。
@@ -188,6 +187,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listPospalSync: () => request<{ memberId: string; customerNumber: string; state: string; attempts: number; lastError: string | null }[]>('/admin/pospal/member-sync'),
   retryPospalSync: (id: string) => request<{ queued: boolean }>(`/admin/pospal/member-sync/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  confirmPospalSync: (id: string) => request<{ queued: boolean }>(`/admin/pospal/members/${encodeURIComponent(id)}/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identityVerified: true }),
+  }),
   getPospalStatus: () => request<PospalConfiguration>('/admin/pospal/status'),
   testPospalConnection: () => request<PospalConnectionCheck>('/admin/pospal/connection-test', { method: 'POST' }),
   previewPospalMember: (id: string) => request<PospalMemberPreview>(`/admin/pospal/members/${encodeURIComponent(id)}/preview`, { method: 'POST' }),
@@ -195,6 +197,14 @@ export const api = {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customerUid, identityVerified: true }),
   }),
   listMembers: () => request<MemberProfile[]>('/admin/members'),
+  getMemberCredential: (memberId: string) => request<{ username: string | null; enabled: boolean }>(
+    `/admin/members/${encodeURIComponent(memberId)}/credential`),
+  setMemberCredential: (memberId: string, username: string, password: string) => request<{ username: string; enabled: boolean }>(
+    `/admin/members/${encodeURIComponent(memberId)}/credential`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }),
+    }),
+  disableMemberCredential: (memberId: string) => request<{ success: true }>(
+    `/admin/members/${encodeURIComponent(memberId)}/credential`, { method: 'DELETE' }),
   createMember: (payload: CreateMemberRequest) =>
     request<MemberProfile>('/admin/members', {
       method: 'POST',
@@ -202,10 +212,6 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getMember: (id: string) => request<MemberProfile>(`/admin/members/${id}`),
-  confirmMemberLink: (id: string, payload: ConfirmMemberLinkRequest) =>
-    request<MemberProfile>(`/admin/members/${encodeURIComponent(id)}/wechat-link`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    }),
   updateMember: (id: string, payload: UpdateMemberRequest) =>
     request<MemberProfile>(`/admin/members/${id}`, {
       method: 'PATCH',
@@ -330,6 +336,16 @@ export const api = {
     request<ConsumptionOrder[]>(userId ? `/admin/orders?userId=${encodeURIComponent(userId)}` : '/admin/orders'),
   listMemberConsumptionOrders: (userId: string) =>
     request<ConsumptionOrder[]>(`/admin/members/${userId}/consumptions`),
+  uploadConsumptionPhotos: (memberId: string, orderId: string, files: File[]) => {
+    if (!files.length || files.length > 9) throw new Error('每次请选择 1–9 张图片');
+    if (files.some(file => file.size > 8 * 1024 * 1024)) throw new Error('单张图片不能超过 8MB');
+    if (files.reduce((total, file) => total + file.size, 0) > 18 * 1024 * 1024) throw new Error('每次上传总大小不能超过 18MB，请分批上传');
+    const form = new FormData();
+    files.forEach(file => form.append('files', file));
+    return request<{ success: true }>(`/admin/members/${encodeURIComponent(memberId)}/consumptions/${encodeURIComponent(orderId)}/photos`, { method: 'POST', body: form }, 60000);
+  },
+  removeConsumptionPhoto: (memberId: string, orderId: string, photoId: string) => request<{ success: true }>(
+    `/admin/members/${encodeURIComponent(memberId)}/consumptions/${encodeURIComponent(orderId)}/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' }),
   listMemberMessages: (status: 'unread' | 'all' = 'all') =>
     request<AdminMemberMessage[]>(`/admin/messages?status=${status}`),
   markMemberMessageRead: (id: string) =>

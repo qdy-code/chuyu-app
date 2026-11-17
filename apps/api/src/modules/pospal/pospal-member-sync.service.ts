@@ -1,7 +1,8 @@
 import { BadGatewayException, BadRequestException, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../store/prisma.service';
-import { PospalClientService } from './pospal-client.service';
+import type { PospalMemberSync } from '../../generated/prisma/client';
+import { PospalClientService, PospalMemberUnavailableException } from './pospal-client.service';
 
 @Injectable()
 export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
@@ -33,6 +34,32 @@ export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async confirmAndQueue(memberId: string, adminId: string, identityVerified: boolean) {
+    if (!identityVerified) throw new BadRequestException('请先核实顾客本人身份及预留手机号');
+    if (this.client.getConfiguration().accountSource !== 'pospal' || !this.client.getAccount()) throw new BadRequestException('尚未配置银豹账务来源');
+    const account = this.client.getAccount();
+    return this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(1297043278, 1)`;
+      const member = await tx.member.findUnique({ where: { id: memberId } });
+      if (!member || member.deletedAt || !member.phone || !/^1[3-9]\d{9}$/.test(member.phone)) throw new BadRequestException('会员不存在或未填写有效手机号');
+      const link = await tx.pospalMemberLink.findUnique({ where: { memberId } });
+      if (link) throw new BadRequestException('该会员已关联银豹，请刷新资料');
+      // The worker claims jobs with a row lock, independently of the member lock.
+      // Lock before reading state so a concurrent claim cannot be overwritten.
+      await tx.$queryRaw`SELECT "memberId" FROM "PospalMemberSync" WHERE "memberId" = ${memberId} FOR UPDATE`;
+      const job = await tx.pospalMemberSync.findUnique({ where: { memberId } });
+      if (job && (job.account !== account || job.state === 'RUNNING' || job.state === 'DONE')) throw new BadRequestException('同步任务正在处理或状态已变更，请刷新后核对');
+      await tx.member.update({ where: { id: memberId }, data: { phoneStoreVerifiedAt: new Date() } });
+      await tx.pospalMemberSync.upsert({
+        where: { memberId },
+        create: { memberId, account, customerNumber: `MP${memberId}` },
+        update: { state: 'PENDING', attempts: 0, lastError: null, nextAttemptAt: new Date(), revision: { increment: 1 } },
+      });
+      await tx.auditLog.create({ data: { id: `a-${randomUUID()}`, actorId: adminId, actorRole: 'ADMIN', action: 'pospal.member.sync.store-confirm', targetType: 'member', targetId: memberId, metadata: { identityVerified: true, verification: 'STORE' }, createdAt: new Date() } });
+      return { queued: true };
+    });
+  }
+
   async processNext() {
     const config = this.client.getConfiguration();
     if (this.running || Date.now() < this.blockedUntil || !config.memberSyncEnabled || !config.enabled || !config.configured || config.accountSource !== 'pospal') return;
@@ -54,33 +81,44 @@ export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
       try {
         if (job.attempts > 3) throw new BadGatewayException('自动尝试次数已达上限');
         const member = await this.prisma.member.findUnique({ where: { id: job.memberId } });
-        if (!member || member.deletedAt || !member.phone || !member.phoneVerifiedAt || job.account !== this.client.getAccount()) {
+        if (!member || member.deletedAt || !member.phone || (!member.phoneVerifiedAt && !member.phoneStoreVerifiedAt) || job.account !== this.client.getAccount()) {
           finalState = 'REVIEW'; message = '手机号验证或连接账号已变更，请门店核对';
         } else {
-          let link = await this.prisma.pospalMemberLink.findUnique({ where: { memberId: job.memberId } });
+          const link = await this.prisma.pospalMemberLink.findUnique({ where: { memberId: job.memberId } });
           if (link) {
             if (link.account !== job.account) throw new BadGatewayException('连接账号不一致');
             await this.client.updateMemberNickname(link.customerUid, member.nickname);
           } else {
             const existing = await this.client.findMemberByNumber(job.customerNumber);
             let uid = job.customerUid;
-            if (existing) {
-              // 只有本任务已经发起过开户，才允许按固定编号恢复未知结果。
-              if ((!job.createAttemptedAt && !uid) || existing.phone !== member.phone || (uid && uid !== existing.uid)) {
+            if (existing && (job.createAttemptedAt || uid)) {
+              // 恢复本任务已发起的开户，校验原编号、手机号及已记录的 UID。
+              if (existing.phone !== member.phone || (uid && uid !== existing.uid)) {
                 finalState = 'REVIEW'; message = '银豹已有该编号或手机号不符，请门店核对';
               } else uid = existing.uid;
             } else if (uid) {
               finalState = 'REVIEW'; message = '已创建的银豹会员无法查到，请门店核对';
             } else {
               const matches = await this.client.findMembersByPhone(member.phone);
-              if (matches.hasMore || matches.candidates.length) {
-                finalState = 'REVIEW'; message = '银豹已有同手机号会员，请核实身份并关联原会员';
+              const candidate = matches.candidates[0];
+              if (existing && (existing.phone !== member.phone || existing.uid !== candidate?.uid)) {
+                finalState = 'REVIEW'; message = '银豹已有该编号或手机号不符，请门店核对';
+              } else if (matches.hasMore || matches.candidates.length > 1) {
+                finalState = 'REVIEW'; message = '银豹有多条同手机号会员，请核对后关联';
+              } else if (candidate) {
+                if (member.phoneVerifiedAt) {
+                  message = await this.linkExistingMember(job, member.phone, candidate);
+                  if (!message) return;
+                } else {
+                  message = '银豹已有同手机号会员，请核实身份并关联原会员';
+                }
+                finalState = 'REVIEW';
               } else {
                 // 在外部写入前保存意图。下次重试先查询编号，不能盲目重复开户。
                 await this.prisma.$transaction(async tx => {
                   await tx.$executeRaw`SELECT pg_advisory_xact_lock(1297043278, 1)`;
                   const current = await tx.member.findUnique({ where: { id: member.id } });
-                  if (!current || current.deletedAt || current.phone !== member.phone || !current.phoneVerifiedAt) throw new BadGatewayException('会员资料已变更');
+                  if (!current || current.deletedAt || current.phone !== member.phone || (!current.phoneVerifiedAt && !current.phoneStoreVerifiedAt)) throw new BadGatewayException('会员资料已变更');
                   await tx.pospalMemberSync.update({ where: { memberId: job.memberId }, data: { createAttemptedAt: new Date() } });
                 });
                 uid = await this.client.createMember(job.customerNumber, member.phone, member.nickname);
@@ -93,7 +131,7 @@ export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
               await this.prisma.$transaction(async tx => {
                 await tx.$executeRaw`SELECT pg_advisory_xact_lock(1297043278, 1)`;
                 const current = await tx.member.findUnique({ where: { id: member.id } });
-                if (!current || current.deletedAt || current.phone !== member.phone || !current.phoneVerifiedAt) throw new BadGatewayException('会员资料已变更');
+                if (!current || current.deletedAt || current.phone !== member.phone || (!current.phoneVerifiedAt && !current.phoneStoreVerifiedAt)) throw new BadGatewayException('会员资料已变更');
                 const occupied = await tx.pospalMemberLink.findFirst({ where: { OR: [{ memberId: member.id }, { customerUid: uid! }] } });
                 if (occupied && (occupied.memberId !== member.id || occupied.customerUid !== uid || occupied.account !== job.account)) throw new BadGatewayException('会员关联已变更');
                 if (!occupied) {
@@ -118,13 +156,73 @@ export class PospalMemberSyncService implements OnModuleInit, OnModuleDestroy {
       await this.prisma.$transaction(async tx => {
         const current = await tx.pospalMemberSync.findUnique({ where: { memberId: job.memberId } });
         if (!current || current.leaseUntil?.getTime() !== job.leaseUntil?.getTime()) return;
-        const dirty = current.revision !== job.revision && finalState === 'DONE';
+        // A fresh phone verification can make a previously ambiguous job eligible.
+        const dirty = current.revision !== job.revision && (finalState === 'DONE' || finalState === 'REVIEW');
         await tx.pospalMemberSync.update({ where: { memberId: job.memberId }, data: {
-          state: dirty ? 'PENDING' : finalState, lastError: message, leaseUntil: null,
+          state: dirty ? 'PENDING' : finalState, lastError: dirty ? null : message, leaseUntil: null,
           ...(dirty ? { attempts: 0 } : {}),
           nextAttemptAt: new Date(Date.now() + (dirty ? 0 : Math.min(job.attempts, 3) * 300_000)),
         } });
       });
     } finally { this.running = false; }
+  }
+
+  private async linkExistingMember(job: PospalMemberSync, phone: string, candidate: { uid: string; number: string }) {
+    let snapshot: Awaited<ReturnType<PospalClientService['getMemberByUid']>>;
+    try {
+      snapshot = await this.client.getMemberByUid(candidate.uid);
+    } catch (error) {
+      if (error instanceof PospalMemberUnavailableException) return error.message;
+      throw error;
+    }
+    if (snapshot.uid !== candidate.uid || snapshot.phone !== phone || snapshot.number !== candidate.number) {
+      return '银豹会员资料已变更，请门店核对';
+    }
+
+    return this.prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(1297043278, 1)`;
+      await tx.$queryRaw`SELECT "memberId" FROM "PospalMemberSync" WHERE "memberId" = ${job.memberId} FOR UPDATE`;
+      const currentJob = await tx.pospalMemberSync.findUnique({ where: { memberId: job.memberId } });
+      if (currentJob?.state !== 'RUNNING' || currentJob.leaseUntil?.getTime() !== job.leaseUntil?.getTime()) {
+        return '同步任务已变更，请刷新';
+      }
+      const member = await tx.member.findUnique({ where: { id: job.memberId } });
+      if (!member || member.deletedAt || member.phone !== phone || !member.phoneVerifiedAt || job.account !== this.client.getAccount()) {
+        return '手机号验证或连接账号已变更，请门店核对';
+      }
+      const occupied = await tx.pospalMemberLink.findFirst({
+        where: { OR: [{ memberId: member.id }, { customerUid: snapshot.uid }] },
+      });
+      if (occupied && (occupied.memberId !== member.id || occupied.customerUid !== snapshot.uid || occupied.account !== job.account)) {
+        return '小程序会员或银豹会员已关联，请门店核对';
+      }
+
+      const syncedAt = new Date();
+      if (!occupied) {
+        await tx.pospalMemberLink.create({
+          data: { memberId: member.id, customerUid: snapshot.uid, customerNumber: snapshot.number, account: job.account, lastSyncedAt: syncedAt },
+        });
+        await tx.member.update({
+          where: { id: member.id },
+          data: { balance: snapshot.balance, points: snapshot.points, levelName: snapshot.levelName, discountRate: snapshot.discountRate },
+        });
+        await tx.auditLog.create({
+          data: {
+            id: `a-${randomUUID()}`, actorId: member.id, actorRole: 'MEMBER', action: 'pospal.member.link.auto',
+            targetType: 'member', targetId: member.id,
+            metadata: { customerUid: snapshot.uid, customerNumber: snapshot.number, verification: 'WECHAT_PHONE' }, createdAt: syncedAt,
+          },
+        });
+      }
+      const profileChanged = currentJob.revision !== job.revision;
+      await tx.pospalMemberSync.update({
+        where: { memberId: member.id },
+        data: {
+          state: profileChanged ? 'PENDING' : 'DONE', leaseUntil: null, lastError: null,
+          nextAttemptAt: syncedAt, customerUid: snapshot.uid, ...(profileChanged ? { attempts: 0 } : {}),
+        },
+      });
+      return null;
+    });
   }
 }

@@ -6,6 +6,8 @@ const BASE_URL = 'https://platform.pospal.cn';
 const CONFIG_KEYS = ['POSPAL_APP_ID', 'POSPAL_APP_KEY', 'POSPAL_ACCOUNT'] as const;
 type PospalPage = { list: Record<string, unknown>[]; hasMore: boolean; requestId: string };
 
+export class PospalMemberUnavailableException extends BadGatewayException {}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -98,10 +100,10 @@ export class PospalClientService {
     const response = await this.queryPage('/openapi/v3/customer/increment-page', { uid, limit: 2, needCustomerCategory: true });
     const row = response.list[0];
     if (!row || response.list.length !== 1 || response.hasMore || identifier(row.uid) !== uid) {
-      throw new BadGatewayException('银豹会员不存在或返回结果不唯一');
+      throw new PospalMemberUnavailableException('银豹会员不存在或返回结果不唯一');
     }
     if (row.enable !== 1 || row.isLoss === 1 || row.active === -10) {
-      throw new BadGatewayException('银豹会员已停用、删除或挂失，请联系门店处理');
+      throw new PospalMemberUnavailableException('银豹会员已停用、删除或挂失，请联系门店处理');
     }
     const discount = amount(row.discount ?? 100);
     if (discount < 0 || discount > 100) throw new BadGatewayException('银豹会员折扣格式无效');

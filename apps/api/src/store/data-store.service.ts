@@ -234,6 +234,7 @@ export class DataStoreService {
     const seed = createDefaultStore();
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.consumptionPhoto.deleteMany();
       await tx.pospalMemberSync.deleteMany();
       await tx.pospalMemberLink.deleteMany();
       await tx.memberLinkRequest.deleteMany();
@@ -433,8 +434,11 @@ export class DataStoreService {
     });
   }
 
-  async createMember(payload: CreateMemberRequest): Promise<{ member?: MemberProfile; reason?: string }> {
+  async createMember(payload: CreateMemberRequest, adminId = 'admin-001'): Promise<{ member?: MemberProfile; reason?: string }> {
     if (payload.balance || payload.points) assertLocalAccountingAllowed();
+    const phone = payload.phone?.trim() || null;
+    if (payload.identityVerified && !phone) throw new BadRequestException('请先填写已核实的手机号');
+    if (payload.identityVerified && usesPospalAccounts() && !process.env.POSPAL_ACCOUNT?.trim()) throw new BadRequestException('尚未配置银豹连接账号');
     await this.ensureBootstrapData();
     return this.withWriteTransaction(async (tx) => {
       const memberId = payload.id?.trim() || (await this.generateMemberNumber(tx));
@@ -448,7 +452,7 @@ export class DataStoreService {
 
       const duplicated = await tx.member.findFirst({
         where: {
-          OR: [{ id: memberId }, { openId: `admin-created-${memberId}` }, ...(payload.phone ? [{ phone: payload.phone }] : [])],
+          OR: [{ id: memberId }, { openId: `admin-created-${memberId}` }, ...(phone ? [{ phone }] : [])],
         },
       });
       if (duplicated) {
@@ -466,7 +470,8 @@ export class DataStoreService {
         data: {
           id: memberId,
           openId: `admin-created-${memberId}`,
-          phone: payload.phone?.trim() || null,
+          phone,
+          phoneStoreVerifiedAt: payload.identityVerified ? new Date() : null,
           nickname,
           remark: payload.remark?.trim() || null,
           avatarUrl: '',
@@ -479,6 +484,12 @@ export class DataStoreService {
         },
       });
 
+      if (usesPospalAccounts() && member.phoneStoreVerifiedAt && process.env.POSPAL_ACCOUNT?.trim()) {
+        await tx.pospalMemberSync.create({ data: {
+          memberId, account: process.env.POSPAL_ACCOUNT.trim(), customerNumber: `MP${memberId}`,
+        } });
+      }
+
       if (member.balance !== 0) {
         await tx.balanceLedger.create({ data: {
           id: `bl-${uuid()}`, userId: member.id, changeAmount: member.balance,
@@ -489,7 +500,7 @@ export class DataStoreService {
       await this.recordPointsChange(tx, member.id, 0, member.points, '初始积分');
 
       await this.writeAudit({
-        actorId: 'admin-001',
+        actorId: adminId,
         actorRole: 'ADMIN',
         action: 'member.create',
         targetType: 'member',
@@ -500,6 +511,8 @@ export class DataStoreService {
           levelId: member.levelId,
           balance: member.balance,
           points: member.points,
+          identityVerified: !!payload.identityVerified,
+          verification: payload.identityVerified ? 'STORE' : null,
         },
       }, tx);
 
@@ -660,6 +673,40 @@ export class DataStoreService {
     return { member: this.toMemberProfile(updated), authVersion: updated.authVersion };
   }
 
+  private async claimOfflineMember(source: DbMember, target: DbMember, tx: Prisma.TransactionClient) {
+    const verifiedAt = new Date();
+    // The target has never had a WeChat binding. Keep its existing password
+    // credential and data, and invalidate only the temporary source identity.
+    await tx.member.update({
+      where: { id: source.id },
+      data: { openId: `linked-${uuid()}`, deletedAt: verifiedAt, authVersion: { increment: 1 } },
+    });
+    const updated = await tx.member.update({
+      where: { id: target.id }, data: { openId: source.openId, phoneVerifiedAt: verifiedAt },
+    });
+    const account = process.env.POSPAL_ACCOUNT?.trim();
+    if (usesPospalAccounts() && account && !(await tx.pospalMemberLink.findUnique({ where: { memberId: target.id } }))) {
+      await tx.$queryRaw`SELECT "memberId" FROM "PospalMemberSync" WHERE "memberId" = ${target.id} FOR UPDATE`;
+      const job = await tx.pospalMemberSync.findUnique({ where: { memberId: target.id } });
+      if (!job) {
+        await tx.pospalMemberSync.create({ data: { memberId: target.id, account, customerNumber: `MP${target.id}` } });
+      } else if (job.account === account) {
+        await tx.pospalMemberSync.update({
+          where: { memberId: target.id },
+          data: {
+            revision: { increment: 1 },
+            ...(job.state !== 'RUNNING' ? { state: 'PENDING', attempts: 0, lastError: null, nextAttemptAt: verifiedAt } : {}),
+          },
+        });
+      }
+    }
+    await this.writeAudit({
+      actorId: updated.id, actorRole: 'MEMBER', action: 'member.wechat.claim-offline', targetType: 'member',
+      targetId: updated.id, metadata: { retiredMemberId: source.id, verification: 'WECHAT_PHONE' },
+    }, tx);
+    return { member: this.toMemberProfile(updated), sessionAuthVersion: updated.authVersion };
+  }
+
   private async hasNoProtectedRecords(member: DbMember, tx: Prisma.TransactionClient): Promise<boolean> {
     if (member.balance !== 0 || member.points !== 0) return false;
     const counts = await Promise.all([
@@ -673,6 +720,7 @@ export class DataStoreService {
       tx.accessoryProduct.count({ where: { reservedByUserId: member.id } }),
       tx.pospalMemberLink.count({ where: { memberId: member.id } }),
       tx.pospalMemberSync.count({ where: { memberId: member.id } }),
+      tx.consumptionPhoto.count({ where: { memberId: member.id, removedAt: null } }),
     ]);
     return counts.every(count => count === 0);
   }
@@ -2241,7 +2289,8 @@ export class DataStoreService {
     memberId: string,
     payload: UpdateMyProfileRequest,
     verifiedByWechat = false,
-  ): Promise<{ member?: MemberProfile; reason?: string }> {
+    acceptOfflineClaim = false,
+  ): Promise<{ member?: MemberProfile; reason?: string; sessionAuthVersion?: number }> {
     return this.withWriteTransaction(async (tx) => {
       const member = await tx.member.findUnique({ where: { id: memberId } });
       if (!member || member.deletedAt) {
@@ -2276,6 +2325,11 @@ export class DataStoreService {
           },
         });
         if (duplicated) {
+          if (verifiedByWechat && acceptOfflineClaim && !member.phone && !duplicated.deletedAt &&
+            duplicated.openId === `admin-created-${duplicated.id}` && !duplicated.phoneVerifiedAt &&
+            await this.canSelfRecover(member, tx)) {
+            return this.claimOfflineMember(member, duplicated, tx);
+          }
           return { reason: 'phone already bound by another member' };
         }
       }
@@ -2288,14 +2342,15 @@ export class DataStoreService {
       const updated = await tx.member.update({
         where: { id: member.id },
         data: {
-          ...(phone ? { phone, phoneVerifiedAt: verifiedByWechat ? new Date() : phone === member.phone ? member.phoneVerifiedAt : null } : {}),
+          ...(phone ? { phone, phoneVerifiedAt: verifiedByWechat ? new Date() : phone === member.phone ? member.phoneVerifiedAt : null,
+            phoneStoreVerifiedAt: phone === member.phone ? member.phoneStoreVerifiedAt : null } : {}),
           ...(nextBirthday ? { birthday: nextBirthday } : {}),
           ...(nickname ? { nickname } : {}),
         },
       });
 
       // 与手机号保存同一事务落盘；注册和资料更新不等待银豹网络。
-      if (usesPospalAccounts() && updated.phoneVerifiedAt && updated.phone && process.env.POSPAL_ACCOUNT?.trim()) {
+      if (usesPospalAccounts() && (updated.phoneVerifiedAt || updated.phoneStoreVerifiedAt) && updated.phone && process.env.POSPAL_ACCOUNT?.trim()) {
         const link = await tx.pospalMemberLink.findUnique({ where: { memberId } });
         const job = await tx.pospalMemberSync.findUnique({ where: { memberId } });
         if ((!link && !job) || (nickname && nickname !== member.nickname) || (phone && phone !== member.phone) || (verifiedByWechat && !member.phoneVerifiedAt)) {

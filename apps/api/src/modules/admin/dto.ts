@@ -77,6 +77,10 @@ export class CreateMemberLevelDto implements CreateMemberLevelRequest {
 }
 
 export class CreateMemberDto implements CreateMemberRequest {
+  @IsBoolean()
+  @IsOptional()
+  identityVerified?: boolean;
+
   @IsString()
   @IsOptional()
   id?: string;

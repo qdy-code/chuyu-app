@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from 'vue';
+import { computed, h, ref, watch } from 'vue';
 import type { DataTableColumns } from 'naive-ui';
 import {
   NAvatar,
@@ -23,7 +23,7 @@ import {
   useDialog,
   useMessage,
 } from 'naive-ui';
-import { ClipboardList, Link2, Save, Search, Trash2, UserPlus } from '@lucide/vue';
+import { ClipboardList, KeyRound, Save, Search, Trash2, UserPlus } from '@lucide/vue';
 import type { Appointment, ConsumptionOrder, MemberProfile } from '@member-platform/shared';
 import { api, toAbsoluteImageUrl } from '@/api/client';
 import { useDataStore } from '@/composables/useDataStore';
@@ -56,17 +56,150 @@ const historyLoading = ref(false);
 const historyDeletingId = ref('');
 const historyOrders = ref<ConsumptionOrder[]>([]);
 const historyAppointments = ref<Appointment[]>([]);
-const linkingMember = ref<MemberProfile | null>(null);
-const linkModalOpen = ref(false);
-const linking = ref(false);
-const linkForm = ref({ code: '', phone: '', verified: false });
+const photoInput = ref<HTMLInputElement | null>(null);
+const photoOrder = ref<ConsumptionOrder | null>(null);
+const photoBusy = ref('');
+const photoError = ref('');
+
+function chooseConsumptionPhotos(order: ConsumptionOrder) {
+  if (photoBusy.value) return;
+  photoOrder.value = order;
+  photoError.value = '';
+  photoInput.value?.click();
+}
+
+async function refreshConsumptionPhotos(memberId: string) {
+  const orders = await api.listMemberConsumptionOrders(memberId);
+  if (historyOpen.value && historyMember.value?.id === memberId) historyOrders.value = orders;
+}
+
+async function uploadConsumptionPhotos(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files || []);
+  input.value = '';
+  const memberId = historyMember.value?.id;
+  const order = photoOrder.value;
+  if (!memberId || !order || !files.length || photoBusy.value) return;
+  photoBusy.value = order.id;
+  photoError.value = '';
+  let saved = false;
+  try {
+    await api.uploadConsumptionPhotos(memberId, order.id, files);
+    saved = true;
+    message.success('美甲图已保存，顾客刷新消费记录即可查看');
+    await refreshConsumptionPhotos(memberId);
+  } catch (error) {
+    photoError.value = saved ? '图片已保存，但列表刷新失败，请重新打开使用记录查看，避免重复上传。' : error instanceof Error ? error.message : '图片上传失败，请重试';
+  } finally { photoBusy.value = ''; }
+}
+
+function removeConsumptionPhoto(order: ConsumptionOrder, photoId: string) {
+  const memberId = historyMember.value?.id;
+  if (!memberId || photoBusy.value) return;
+  dialog.warning({
+    title: '移除这张美甲图', content: '移除后，顾客将无法在消费记录中查看这张图片。', positiveText: '移除图片', negativeText: '取消',
+    onPositiveClick: async () => {
+      photoBusy.value = order.id;
+      photoError.value = '';
+      try { await api.removeConsumptionPhoto(memberId, order.id, photoId); await refreshConsumptionPhotos(memberId); message.success('图片已移除'); }
+      catch (error) { photoError.value = error instanceof Error ? error.message : '移除失败，请重试'; }
+      finally { photoBusy.value = ''; }
+    },
+  });
+}
+const credentialMember = ref<MemberProfile | null>(null);
+const credentialForm = ref({ username: '', password: '' });
+const credentialStatus = ref<{ username: string | null; enabled: boolean } | null>(null);
+const credentialLoading = ref(false);
+const credentialBusy = ref(false);
+const credentialError = ref('');
+let credentialRequest = 0;
+
+async function openCredential(member: MemberProfile) {
+  const requestId = ++credentialRequest;
+  credentialMember.value = member;
+  credentialForm.value = { username: '', password: '' };
+  credentialStatus.value = null;
+  credentialError.value = '';
+  credentialLoading.value = true;
+  try {
+    const status = await api.getMemberCredential(member.id);
+    if (requestId !== credentialRequest) return;
+    credentialStatus.value = status;
+    credentialForm.value.username = status.username ?? '';
+  } catch (error) {
+    if (requestId === credentialRequest) credentialError.value = error instanceof Error ? error.message : '无法读取账号状态';
+  } finally {
+    if (requestId === credentialRequest) credentialLoading.value = false;
+  }
+}
+
+function closeCredential() {
+  if (credentialBusy.value) return;
+  credentialRequest += 1;
+  credentialForm.value.password = '';
+  credentialMember.value = null;
+}
+
+async function saveCredential() {
+  const member = credentialMember.value;
+  const username = credentialForm.value.username.trim();
+  const password = credentialForm.value.password;
+  if (!member || !credentialStatus.value || credentialBusy.value) return;
+  if (!/^[a-zA-Z0-9_]{4,32}$/.test(username)) {
+    credentialError.value = '账号须为 4–32 位英文字母、数字或下划线';
+    return;
+  }
+  if (password.length < 12 || password.length > 128 || !password.trim()) {
+    credentialError.value = '请输入 12–128 位字符的新密码';
+    return;
+  }
+  credentialBusy.value = true;
+  credentialError.value = '';
+  try {
+    await api.setMemberCredential(member.id, username, password);
+    message.success('账号密码已保存，可用小程序的账号密码入口登录');
+    credentialBusy.value = false;
+    closeCredential();
+  } catch (error) {
+    credentialError.value = error instanceof Error ? error.message : '保存失败，请重试';
+  } finally {
+    credentialBusy.value = false;
+  }
+}
+
+function confirmDisableCredential() {
+  const member = credentialMember.value;
+  if (!member || !credentialStatus.value?.enabled || credentialBusy.value) return;
+  dialog.warning({
+    title: '停用账号密码登录',
+    content: `停用后，${member.nickname}（${member.id}）的账号密码登录会退出，微信登录仍可继续使用。`,
+    positiveText: '停用',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      credentialBusy.value = true;
+      credentialError.value = '';
+      try {
+        await api.disableMemberCredential(member.id);
+        credentialStatus.value = { username: credentialStatus.value?.username ?? null, enabled: false };
+        credentialForm.value.password = '';
+        message.success('账号密码登录已停用');
+      } catch (error) {
+        credentialError.value = error instanceof Error ? error.message : '停用失败，请重试';
+      } finally {
+        credentialBusy.value = false;
+      }
+    },
+  });
+}
 
 const memberForm = ref({
   id: '',
   nickname: '',
   remark: '',
   phone: '',
-    birthday: '',
+  identityVerified: false,
+  birthday: '',
   levelId: '',
   discountRate: 1,
   balance: 0,
@@ -74,6 +207,7 @@ const memberForm = ref({
 });
 
 const editRows = ref<Record<string, EditRow>>({});
+watch(() => memberForm.value.phone, () => { memberForm.value.identityVerified = false; });
 
 function rowsKeyOf(id: string): EditRow {
   return editRows.value[id];
@@ -127,6 +261,10 @@ async function createMember() {
     return;
   }
   const levelId = memberForm.value.levelId || levels.value[0]?.id;
+  if (pospalAccounts.value && memberForm.value.phone.trim() && !memberForm.value.identityVerified) {
+    message.warning('请先确认已核实顾客本人身份及手机号');
+    return;
+  }
   if (!levelId) {
     message.warning('请先创建会员等级');
     return;
@@ -144,13 +282,14 @@ async function createMember() {
       nickname,
       remark: memberForm.value.remark.trim() || undefined,
       phone: memberForm.value.phone.trim() || undefined,
+      identityVerified: !!memberForm.value.phone.trim() && memberForm.value.identityVerified,
       birthday: memberForm.value.birthday.trim() || undefined,
       levelId,
       discountRate,
       balance: Number(memberForm.value.balance || 0),
       points: Number(memberForm.value.points || 0),
     });
-    message.success('会员创建成功');
+    message.success(pospalAccounts.value && memberForm.value.phone.trim() ? '会员已创建，已加入银豹同步队列' : '会员创建成功');
     resetForm();
     await loadAll();
   } catch (e) {
@@ -166,6 +305,7 @@ function resetForm() {
     nickname: '',
     remark: '',
     phone: '',
+    identityVerified: false,
     birthday: '',
     levelId: levels.value[0]?.id || '',
     discountRate: levels.value[0]?.discountRate || 1,
@@ -204,34 +344,6 @@ async function saveMember(originId: string) {
   }
 }
 
-function openLinkMember(member: MemberProfile) {
-  linkForm.value = { code: '', phone: '', verified: false };
-  linkingMember.value = member;
-  linkModalOpen.value = true;
-}
-
-async function confirmWechatLink() {
-  const member = linkingMember.value;
-  if (!member || linking.value) return;
-  if (!/^\d{8}$/.test(linkForm.value.code) || !/^1[3-9]\d{9}$/.test(linkForm.value.phone) || !linkForm.value.verified) {
-    message.warning('请填写顾客关联码、预留手机号，并确认身份核验');
-    return;
-  }
-  linking.value = true;
-  try {
-    await api.confirmMemberLink(member.id, { code: linkForm.value.code, verifiedPhone: linkForm.value.phone, identityVerified: true });
-    linkingMember.value = null;
-    linkModalOpen.value = false;
-    delete editRows.value[member.id];
-    await loadAll();
-    message.success('微信已关联，原会员号及资产保持不变');
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '关联失败');
-  } finally {
-    linking.value = false;
-  }
-}
-
 function confirmDeleteMember(member: MemberProfile) {
   dialog.warning({
     title: '删除会员',
@@ -258,13 +370,18 @@ async function openMemberHistory(member: MemberProfile) {
   historyMember.value = member;
   historyOpen.value = true;
   historyLoading.value = true;
+  historyOrders.value = [];
+  historyAppointments.value = [];
+  photoError.value = '';
   try {
     const [orders, appointments] = await Promise.all([
       api.listMemberConsumptionOrders(member.id),
       api.listAppointments(),
     ]);
-    historyOrders.value = orders;
-    historyAppointments.value = appointments.filter((item) => item.userId === member.id);
+    if (historyOpen.value && historyMember.value?.id === member.id) {
+      historyOrders.value = orders;
+      historyAppointments.value = appointments.filter((item) => item.userId === member.id);
+    }
   } catch (error) {
     message.error(error instanceof Error ? error.message : '使用记录加载失败');
   } finally {
@@ -487,12 +604,12 @@ const columns = computed<DataTableColumns<MemberProfile>>(() => [
         { size: 8, wrap: false },
         {
           default: () => [
-            ...(row.phone ? [h(NButton, {
-              size: 'small', secondary: true, onClick: () => openLinkMember(row),
-            }, { icon: () => h(NIcon, null, { default: () => h(Link2) }), default: () => '关联微信' })] : []),
             h(NButton, {
               size: 'small', secondary: true, onClick: () => void openMemberHistory(row),
             }, { icon: () => h(NIcon, null, { default: () => h(ClipboardList) }), default: () => '使用记录' }),
+            h(NButton, {
+              size: 'small', secondary: true, onClick: () => void openCredential(row),
+            }, { icon: () => h(NIcon, null, { default: () => h(KeyRound) }), default: () => '账号密码' }),
             h(
               NButton,
               {
@@ -587,6 +704,9 @@ function bulkCheckPending() {
           新增会员
         </NButton>
       </div>
+      <NCheckbox v-if="pospalAccounts && memberForm.phone.trim()" v-model:checked="memberForm.identityVerified">
+        已核实顾客本人身份及手机号，同步到银豹（已有同手机号会员时需核对关联）
+      </NCheckbox>
     </NCard>
 
     <NCard :bordered="false" class="surface sticky-header-card">
@@ -625,22 +745,40 @@ function bulkCheckPending() {
       </NDataTable>
     </NCard>
 
-    <NModal v-model:show="linkModalOpen" preset="card" title="关联微信会员" style="width: 440px">
-      <NSpace v-if="linkingMember" vertical :size="14">
-        <div>当前会员：{{ linkingMember.nickname }}（{{ linkingMember.id }}）</div>
-        <div class="text-sm">仅更换微信登录绑定，原会员号、余额、积分和历史记录保持不变；原微信登录会失效。</div>
-        <NFormItem label="顾客关联码">
-          <NInput v-model:value="linkForm.code" maxlength="8" placeholder="顾客小程序显示的 8 位关联码" />
-        </NFormItem>
-        <NFormItem label="预留手机号">
-          <NInput v-model:value="linkForm.phone" maxlength="11" placeholder="与后台会员资料一致的手机号" />
-        </NFormItem>
-        <NCheckbox v-model:checked="linkForm.verified">我已核对顾客本人身份、预留手机号及原会员记录，确认更换微信绑定</NCheckbox>
-        <NSpace justify="end">
-          <NButton @click="linkModalOpen = false">取消</NButton>
-          <NButton type="primary" :loading="linking" @click="confirmWechatLink">确认关联</NButton>
+    <NModal
+      :show="!!credentialMember"
+      preset="card"
+      title="编辑账号密码"
+      style="width: 460px; max-width: calc(100vw - 32px)"
+      :mask-closable="!credentialBusy"
+      :close-on-esc="!credentialBusy"
+      :closable="!credentialBusy"
+      @update:show="(value: boolean) => { if (!value) closeCredential(); }"
+    >
+      <NSpin :show="credentialLoading">
+        <NSpace v-if="credentialMember" vertical :size="14">
+          <div>{{ credentialMember.nickname }}（{{ credentialMember.id }}）</div>
+          <NAlert v-if="credentialError" type="error" role="alert">{{ credentialError }}</NAlert>
+          <form v-if="credentialStatus" autocomplete="off" @submit.prevent="saveCredential">
+            <NFormItem label="登录账号" label-for="member-credential-username">
+              <NInput v-model:value="credentialForm.username" maxlength="32" placeholder="4–32 位英文字母、数字或下划线"
+                :input-props="{ id: 'member-credential-username', autocomplete: 'off' }" :disabled="credentialBusy" />
+            </NFormItem>
+            <NFormItem label="新密码" label-for="member-credential-password">
+              <NInput v-model:value="credentialForm.password" type="password" show-password-on="click" maxlength="128"
+                placeholder="12–128 位字符" :input-props="{ id: 'member-credential-password', autocomplete: 'new-password' }" :disabled="credentialBusy" />
+            </NFormItem>
+            <NSpace justify="space-between" align="center">
+              <NButton v-if="credentialStatus.enabled" type="error" secondary :disabled="credentialBusy" @click="confirmDisableCredential">停用密码登录</NButton>
+              <span v-else class="dim">{{ credentialStatus.username ? '密码登录已停用' : '尚未开通密码登录' }}</span>
+              <NSpace>
+                <NButton :disabled="credentialBusy" @click="closeCredential">取消</NButton>
+                <NButton type="primary" attr-type="submit" :loading="credentialBusy">保存账号密码</NButton>
+              </NSpace>
+            </NSpace>
+          </form>
         </NSpace>
-      </NSpace>
+      </NSpin>
     </NModal>
 
     <NModal
@@ -661,6 +799,8 @@ function bulkCheckPending() {
           </div>
 
           <NCard size="small" :bordered="false" title="消费记录">
+            <input ref="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden @change="uploadConsumptionPhotos" />
+            <NAlert v-if="photoError" type="error" class="photo-error" role="alert">{{ photoError }}</NAlert>
             <NEmpty v-if="historyOrders.length === 0" description="暂无消费记录" />
             <div v-else class="history-list">
               <div v-for="item in historyOrders" :key="item.id" class="history-row">
@@ -668,10 +808,16 @@ function bulkCheckPending() {
                   <strong>{{ item.title }}</strong>
                   <span class="dim">{{ item.orderDate }} · {{ item.orderNo }} · 实扣 ¥{{ formatMoney(item.finalPrice) }}</span>
                   <NSpace v-if="item.effectImages.length" :size="6">
-                    <NImage v-for="image in item.effectImages" :key="image" width="48" height="48" object-fit="cover" :src="toAbsoluteImageUrl(image)" :preview-src="toAbsoluteImageUrl(image)" />
+                    <div v-for="image in item.effectImages" :key="image" class="consumption-photo">
+                      <NImage width="80" height="80" object-fit="cover" :src="toAbsoluteImageUrl(image)" :preview-src="toAbsoluteImageUrl(image)" alt="本次消费美甲图" />
+                      <NButton v-if="item.consumptionPhotos?.some(photo => photo.url === image)" size="tiny" quaternary :disabled="!!photoBusy" @click="removeConsumptionPhoto(item, item.consumptionPhotos!.find(photo => photo.url === image)!.id)">移除图片</NButton>
+                    </div>
                   </NSpace>
                 </div>
-                <NButton type="error" secondary size="small" :loading="historyDeletingId === item.id" @click="confirmDeleteHistory('order', item.id)">作废并退回</NButton>
+                <NSpace>
+                  <NButton size="small" :loading="photoBusy === item.id" :disabled="!!photoBusy || item.effectImages.length >= 9" @click="chooseConsumptionPhotos(item)">上传美甲图</NButton>
+                  <NButton v-if="item.source !== 'POSPAL'" type="error" secondary size="small" :loading="historyDeletingId === item.id" @click="confirmDeleteHistory('order', item.id)">作废并退回</NButton>
+                </NSpace>
               </div>
             </div>
           </NCard>
@@ -705,6 +851,8 @@ function bulkCheckPending() {
 .history-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid #edf0f2; }
 .history-main { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .history-main strong { color: var(--color-text); }
+.consumption-photo { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.photo-error { margin-bottom: 12px; }
 .dim { color: var(--color-text-muted); font-size: 12px; }
 @media (max-width: 640px) { .history-row { align-items: flex-start; flex-direction: column; } }
 

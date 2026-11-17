@@ -12,6 +12,7 @@ model Member {
   openId       String  @unique
   phone        String? @unique
   phoneVerifiedAt DateTime?
+  phoneStoreVerifiedAt DateTime?
   authVersion  Int @default(0)
   nickname     String
   remark       String?
@@ -27,8 +28,23 @@ model Member {
   pospalLink   PospalMemberLink?
   pospalSync   PospalMemberSync?
   credential   MemberCredential?
+  consumptionPhotos ConsumptionPhoto[]
 
   @@index([levelId])
+}
+
+model ConsumptionPhoto {
+  id String @id
+  memberId String
+  orderId String
+  account String
+  customerUid String
+  image Bytes
+  createdAt DateTime @default(now())
+  removedAt DateTime?
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([memberId, account, customerUid, orderId])
 }
 
 model MemberCredential {
@@ -36,6 +52,7 @@ model MemberCredential {
   username String @unique
   passwordHash String
   enabled Boolean @default(true)
+  sessionVersion Int @default(0)
   failedAttempts Int @default(0)
   lockedUntil DateTime?
   createdAt DateTime @default(now())

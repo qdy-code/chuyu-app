@@ -27,3 +27,14 @@ export class MemberPasswordLoginDto {
   @Length(1, 128)
   password!: string;
 }
+
+export class SetMemberCredentialDto {
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_]{4,32}$/, { message: '账号须为 4–32 位英文字母、数字或下划线' })
+  username!: string;
+
+  @IsString()
+  @Length(12, 128, { message: '密码须为 12–128 位字符' })
+  @Matches(/\S/, { message: '密码不能全为空格' })
+  password!: string;
+}
